@@ -127,6 +127,15 @@ struct CreateAccountView: View {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
         
+        // If fields are empty or Firebase is not configured, allow direct quick sign-in
+        if (trimmedName.isEmpty && trimmedEmail.isEmpty) || !authService.isFirebaseConfigured {
+            authService.signInQuick(
+                email: trimmedEmail.isEmpty ? "student@pace.edu" : trimmedEmail,
+                displayName: trimmedName.isEmpty ? "PACE Student" : trimmedName
+            )
+            return
+        }
+        
         if trimmedName.isEmpty {
             localError = "Full Name is required."
             return
