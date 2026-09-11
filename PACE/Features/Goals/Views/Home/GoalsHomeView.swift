@@ -3,15 +3,18 @@
 //  PACE
 //
 //  Goals Home screen showing primary (nearest) goal, secondary goals, and creation triggers.
+//  Integrates real-time metrics computed via GoalAnalytics.
 //
 
 import SwiftUI
 
 struct GoalsHomeView: View {
     @ObservedObject var goalService = GoalService.shared
+    @ObservedObject var logService = DailyLogService.shared
     
     @State private var showCreateGoalSheet = false
     @State private var selectedGoalForDetail: PACEGoal? = nil
+    @State private var selectedGoalForLog: PACEGoal? = nil
     @State private var navigateToDetail = false
     
     var body: some View {
@@ -55,6 +58,9 @@ struct GoalsHomeView: View {
             }
             .task {
                 await goalService.fetchActiveGoals()
+                for g in goalService.goals {
+                    _ = await logService.fetchLogs(for: g.id)
+                }
             }
             .sheet(isPresented: $showCreateGoalSheet) {
                 CreateGoalFlowView(
@@ -68,6 +74,13 @@ struct GoalsHomeView: View {
                         }
                     }
                 )
+            }
+            .sheet(item: $selectedGoalForLog) { goal in
+                LogProgressView(goal: goal) {
+                    Task {
+                        _ = await logService.fetchLogs(for: goal.id)
+                    }
+                }
             }
             .navigationDestination(isPresented: $navigateToDetail) {
                 if let goal = selectedGoalForDetail {
@@ -110,6 +123,10 @@ struct GoalsHomeView: View {
         VStack(alignment: .leading, spacing: 20) {
             // Nearest / Primary Goal
             if let primaryGoal = goalService.goals.first {
+                let primaryLogs = logService.logsByGoal[primaryGoal.id] ?? []
+                let primaryMetrics = GoalAnalytics.compute(goal: primaryGoal, logs: primaryLogs)
+                let hasLoggedToday = primaryLogs.contains(where: { $0.dateString == DailyLog.dateFormatter.string(from: Date()) })
+                
                 VStack(alignment: .leading, spacing: 12) {
                     HStack {
                         Text("PRIMARY TARGET")
@@ -142,25 +159,36 @@ struct GoalsHomeView: View {
                     HStack(spacing: 12) {
                         PACEMetricView(
                             label: "Days Remaining",
-                            value: String(format: "%02d", primaryGoal.daysRemaining),
+                            value: String(format: "%02d", primaryMetrics.daysRemaining),
                             unit: "DAYS",
                             isAccentValue: true
                         )
                         
                         PACEMetricView(
-                            label: "Target Date",
-                            value: primaryGoal.formattedTargetDate,
-                            unit: nil
+                            label: "Current Streak",
+                            value: String(format: "%02d", primaryMetrics.currentStreak),
+                            unit: "DAYS"
                         )
                     }
                     
-                    PACEButton(
-                        title: "VIEW GOAL DETAILS",
-                        icon: "arrow.right.square",
-                        variant: .secondary
-                    ) {
-                        selectedGoalForDetail = primaryGoal
-                        navigateToDetail = true
+                    HStack(spacing: 10) {
+                        PACEButton(
+                            title: hasLoggedToday ? "EDIT TODAY'S LOG" : "LOG PROGRESS",
+                            icon: hasLoggedToday ? "pencil.square" : "plus.square",
+                            variant: .primary
+                        ) {
+                            selectedGoalForLog = primaryGoal
+                        }
+                        
+                        PACEButton(
+                            title: "DETAILS",
+                            icon: "arrow.right.square",
+                            variant: .secondary,
+                            isFullWidth: false
+                        ) {
+                            selectedGoalForDetail = primaryGoal
+                            navigateToDetail = true
+                        }
                     }
                 }
                 .padding(18)
@@ -175,6 +203,9 @@ struct GoalsHomeView: View {
                         .foregroundColor(PACEColor.textPrimary)
                     
                     ForEach(goalService.goals.dropFirst()) { goal in
+                        let gLogs = logService.logsByGoal[goal.id] ?? []
+                        let gMetrics = GoalAnalytics.compute(goal: goal, logs: gLogs)
+                        
                         Button(action: {
                             selectedGoalForDetail = goal
                             navigateToDetail = true
@@ -186,13 +217,13 @@ struct GoalsHomeView: View {
                                         .bold()
                                         .foregroundColor(PACEColor.textPrimary)
                                     Spacer()
-                                    Text("\(goal.daysRemaining)D LEFT")
+                                    Text("\(gMetrics.daysRemaining)D LEFT")
                                         .font(PACETypography.metricSmall())
                                         .foregroundColor(PACEColor.accent)
                                 }
                                 
                                 HStack {
-                                    Text("TARGET: \(goal.formattedTargetDate.uppercased())")
+                                    Text("STREAK: \(gMetrics.currentStreak)D • CONSISTENCY: \(String(format: "%.0f", gMetrics.consistencyPercentage))%")
                                         .font(PACETypography.caption())
                                         .foregroundColor(PACEColor.textSecondary)
                                     Spacer()

@@ -3,9 +3,9 @@
 //  PACE
 //
 //  Goal detail screen showing:
-//  - Title, Target Date, Days Remaining, Today Status
-//  - Metric placeholders (Streak, Logs, Velocity)
-//  - Navigation destinations: Log Progress, Journey, Activities, Evidence
+//  - Real-time GoalAnalytics metrics (streak, consistency, active days, time)
+//  - Log Progress action and recent logs history
+//  - Destinations: Journey, Activities, Evidence
 //  - Edit Goal & Delete Goal with confirmation
 //
 
@@ -13,15 +13,26 @@ import SwiftUI
 
 struct GoalDetailView: View {
     @ObservedObject var goalService = GoalService.shared
+    @ObservedObject var logService = DailyLogService.shared
     @Environment(\.dismiss) private var dismiss
     
     @State var goal: PACEGoal
     @State private var showEditSheet = false
     @State private var showDeleteConfirmation = false
-    @State private var navigateToLogProgress = false
+    @State private var showLogSheet = false
+    @State private var selectedLogForEdit: DailyLog? = nil
+    
     @State private var navigateToJourney = false
     @State private var navigateToActivities = false
     @State private var navigateToEvidence = false
+    
+    private var goalLogs: [DailyLog] {
+        logService.logsByGoal[goal.id] ?? []
+    }
+    
+    private var metrics: GoalMetrics {
+        GoalAnalytics.compute(goal: goal, logs: goalLogs)
+    }
     
     var body: some View {
         ScrollView {
@@ -58,11 +69,11 @@ struct GoalDetailView: View {
                 
                 PACEDivider()
                 
-                // Countdown & Target Date Metrics
+                // Countdown & Target Date
                 HStack(spacing: 12) {
                     PACEMetricView(
                         label: "Days Remaining",
-                        value: String(format: "%02d", goal.daysRemaining),
+                        value: String(format: "%02d", metrics.daysRemaining),
                         unit: "DAYS",
                         isAccentValue: true
                     )
@@ -74,45 +85,118 @@ struct GoalDetailView: View {
                     )
                 }
                 
-                // Metrics Placeholders (if logs do not exist yet)
+                // Real-time Velocity & Performance Metrics
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("VELOCITY & PERFORMANCE")
+                    Text("PERFORMANCE & STREAK")
                         .font(PACETypography.sectionHeader())
                         .foregroundColor(PACEColor.textPrimary)
                     
                     HStack(spacing: 12) {
                         PACEMetricView(
                             label: "Current Streak",
-                            value: "00",
-                            unit: "DAYS"
+                            value: String(format: "%02d", metrics.currentStreak),
+                            unit: "DAYS",
+                            isAccentValue: metrics.currentStreak > 0
                         )
                         PACEMetricView(
-                            label: "Evidence Logs",
-                            value: "00",
-                            unit: "ENTRIES"
+                            label: "Longest Streak",
+                            value: String(format: "%02d", metrics.longestStreak),
+                            unit: "DAYS"
                         )
                     }
                     
-                    Text("Metrics will automatically populate once daily logs are recorded.")
-                        .font(PACETypography.caption())
-                        .foregroundColor(PACEColor.textSecondary)
+                    HStack(spacing: 12) {
+                        PACEMetricView(
+                            label: "Consistency",
+                            value: String(format: "%.0f", metrics.consistencyPercentage),
+                            unit: "%"
+                        )
+                        PACEMetricView(
+                            label: "Active Days",
+                            value: String(format: "%02d", metrics.activeDays),
+                            unit: "DAYS"
+                        )
+                    }
+                    
+                    HStack(spacing: 12) {
+                        PACEMetricView(
+                            label: "Total Invested",
+                            value: "\(metrics.totalLoggedMinutes)",
+                            unit: "MINUTES"
+                        )
+                        PACEMetricView(
+                            label: "Avg Session",
+                            value: String(format: "%.0f", metrics.averageSessionMinutes),
+                            unit: "MIN"
+                        )
+                    }
                 }
                 .padding(16)
                 .paceCard()
                 
-                // Action Destinations
+                // Log Progress Action
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("QUICK ACTIONS")
+                    Text("PROGRESS LOGGING")
                         .font(PACETypography.sectionHeader())
                         .foregroundColor(PACEColor.textPrimary)
                     
                     PACEButton(
-                        title: "LOG PROGRESS",
-                        icon: "plus.square",
+                        title: hasLoggedToday ? "EDIT TODAY'S LOG" : "LOG TODAY'S WORK",
+                        icon: hasLoggedToday ? "pencil.square" : "plus.square",
                         variant: .primary
                     ) {
-                        navigateToLogProgress = true
+                        showLogSheet = true
                     }
+                }
+                
+                // Recent Evidence Logs List
+                if !goalLogs.isEmpty {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("RECORDED ENTRIES (\(goalLogs.count))")
+                            .font(PACETypography.sectionHeader())
+                            .foregroundColor(PACEColor.textPrimary)
+                        
+                        ForEach(goalLogs) { log in
+                            Button(action: {
+                                selectedLogForEdit = log
+                            }) {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    HStack {
+                                        Text(log.formattedDisplayDate.uppercased())
+                                            .font(PACETypography.metricSmall())
+                                            .foregroundColor(PACEColor.accent)
+                                        Spacer()
+                                        Text(log.formattedDuration)
+                                            .font(PACETypography.metricSmall())
+                                            .foregroundColor(PACEColor.textPrimary)
+                                    }
+                                    
+                                    Text(log.selectedActivities.joined(separator: " • ").uppercased())
+                                        .font(PACETypography.caption())
+                                        .foregroundColor(PACEColor.textSecondary)
+                                    
+                                    if let note = log.note {
+                                        Text(note)
+                                            .font(PACETypography.caption())
+                                            .foregroundColor(PACEColor.textPrimary)
+                                            .padding(.top, 2)
+                                    }
+                                }
+                                .padding(12)
+                                .paceCard()
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+                
+                PACEDivider()
+                
+                // Quick Navigation Destinations
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("VAULT DESTINATIONS")
+                        .font(PACETypography.sectionHeader())
+                        .foregroundColor(PACEColor.textPrimary)
                     
                     HStack(spacing: 10) {
                         PACEButton(
@@ -170,6 +254,23 @@ struct GoalDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(PACEColor.background, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
+        .task {
+            _ = await logService.fetchLogs(for: goal.id)
+        }
+        .sheet(isPresented: $showLogSheet) {
+            LogProgressView(goal: goal) {
+                Task {
+                    _ = await logService.fetchLogs(for: goal.id)
+                }
+            }
+        }
+        .sheet(item: $selectedLogForEdit) { log in
+            LogProgressView(goal: goal, initialDate: log.date) {
+                Task {
+                    _ = await logService.fetchLogs(for: goal.id)
+                }
+            }
+        }
         .sheet(isPresented: $showEditSheet) {
             EditGoalView(goal: goal) { updated in
                 self.goal = updated
@@ -188,10 +289,7 @@ struct GoalDetailView: View {
             }
             Button("CANCEL", role: .cancel) {}
         } message: {
-            Text("Are you sure you want to delete '\(goal.title)'? This action cannot be undone.")
-        }
-        .navigationDestination(isPresented: $navigateToLogProgress) {
-            LogProgressDestinationView(goal: goal)
+            Text("Are you sure you want to delete '\(goal.title)'? All associated logs will also be removed.")
         }
         .navigationDestination(isPresented: $navigateToJourney) {
             JourneyDestinationView(goal: goal)
@@ -202,5 +300,10 @@ struct GoalDetailView: View {
         .navigationDestination(isPresented: $navigateToEvidence) {
             EvidenceDestinationView(goal: goal)
         }
+    }
+    
+    private var hasLoggedToday: Bool {
+        let todayString = DailyLog.dateFormatter.string(from: Date())
+        return goalLogs.contains(where: { $0.dateString == todayString })
     }
 }
