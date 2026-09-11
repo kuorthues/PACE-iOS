@@ -2,13 +2,15 @@
 //  SettingsPlaceholderView.swift
 //  PACE
 //
-//  Settings feature placeholder screen (Module 1 Foundation).
-//  No business logic or Firebase Auth integration in this module.
+//  Settings screen showing system configuration and authenticated user logout.
+//  No OAuth providers, profiles, or account settings beyond logout.
 //
 
 import SwiftUI
 
 struct SettingsPlaceholderView: View {
+    @ObservedObject var authService = AuthService.shared
+    
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -65,16 +67,44 @@ struct SettingsPlaceholderView: View {
                         .foregroundColor(PACEColor.textPrimary)
                     
                     VStack(alignment: .leading, spacing: 14) {
-                        Text("Authentication placeholder. Firebase Auth sign-in, account settings, and data sync will be wired in future modules.")
-                            .font(PACETypography.caption())
-                            .foregroundColor(PACEColor.textSecondary)
+                        if let user = authService.currentUser {
+                            HStack {
+                                Text("USER")
+                                    .font(PACETypography.caption())
+                                    .foregroundColor(PACEColor.textSecondary)
+                                Spacer()
+                                Text(user.displayName ?? "PACE User")
+                                    .font(PACETypography.metricSmall())
+                                    .foregroundColor(PACEColor.textPrimary)
+                            }
+                            
+                            PACEDivider()
+                            
+                            HStack {
+                                Text("EMAIL")
+                                    .font(PACETypography.caption())
+                                    .foregroundColor(PACEColor.textSecondary)
+                                Spacer()
+                                Text(user.email)
+                                    .font(PACETypography.metricSmall())
+                                    .foregroundColor(PACEColor.textSecondary)
+                            }
+                            
+                            PACEDivider()
+                        } else {
+                            Text("Authenticated Session Active.")
+                                .font(PACETypography.caption())
+                                .foregroundColor(PACEColor.textSecondary)
+                            
+                            PACEDivider()
+                        }
                         
                         PACEButton(
-                            title: "ACCOUNT ACTIONS (PLACEHOLDER)",
-                            icon: "person.crop.square",
+                            title: "LOGOUT",
+                            icon: "rectangle.portrait.and.arrow.right",
                             variant: .outline
                         ) {
-                            // Placeholder
+                            authService.signOut()
                         }
                     }
                     .padding(16)
