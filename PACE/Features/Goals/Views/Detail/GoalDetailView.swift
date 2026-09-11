@@ -14,6 +14,7 @@ import SwiftUI
 struct GoalDetailView: View {
     @ObservedObject var goalService = GoalService.shared
     @ObservedObject var logService = DailyLogService.shared
+    @ObservedObject var evidenceService = EvidenceService.shared
     @Environment(\.dismiss) private var dismiss
     
     @State var goal: PACEGoal
@@ -161,10 +162,23 @@ struct GoalDetailView: View {
                                 selectedLogForEdit = log
                             }) {
                                 VStack(alignment: .leading, spacing: 6) {
-                                    HStack {
+                                    HStack(spacing: 8) {
                                         Text(log.formattedDisplayDate.uppercased())
                                             .font(PACETypography.metricSmall())
                                             .foregroundColor(PACEColor.accent)
+                                        
+                                        if log.evidenceId != nil || evidenceService.fetchEvidence(forGoal: goal.id, logId: log.dateString) != nil {
+                                            HStack(spacing: 3) {
+                                                Image(systemName: "camera.fill")
+                                                Text("PROOF")
+                                            }
+                                            .font(.system(size: 9, weight: .bold))
+                                            .foregroundColor(PACEColor.background)
+                                            .padding(.horizontal, 6)
+                                            .padding(.vertical, 2)
+                                            .background(PACEColor.accent)
+                                        }
+                                        
                                         Spacer()
                                         Text(log.formattedDuration)
                                             .font(PACETypography.metricSmall())
@@ -298,7 +312,7 @@ struct GoalDetailView: View {
             ActivitiesDestinationView(goal: goal)
         }
         .navigationDestination(isPresented: $navigateToEvidence) {
-            EvidenceDestinationView(goal: goal)
+            EvidenceArchiveView(goal: goal)
         }
     }
     

@@ -7,7 +7,7 @@
 
 import Foundation
 
-struct PACEUser: Identifiable, Equatable {
+struct PACEUser: Identifiable, Codable, Equatable {
     let id: String
     let email: String
     let displayName: String?

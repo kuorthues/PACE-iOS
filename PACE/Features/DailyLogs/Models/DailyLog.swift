@@ -16,6 +16,7 @@ struct DailyLog: Identifiable, Codable, Equatable {
     var selectedActivities: [String]
     var durationMinutes: Int
     var note: String?
+    var evidenceId: String?
     let createdAt: Date
     var updatedAt: Date
     
@@ -26,6 +27,7 @@ struct DailyLog: Identifiable, Codable, Equatable {
         selectedActivities: [String],
         durationMinutes: Int,
         note: String? = nil,
+        evidenceId: String? = nil,
         createdAt: Date = Date(),
         updatedAt: Date = Date()
     ) {
@@ -41,6 +43,7 @@ struct DailyLog: Identifiable, Codable, Equatable {
         self.selectedActivities = selectedActivities
         self.durationMinutes = max(1, durationMinutes)
         self.note = note?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? note?.trimmingCharacters(in: .whitespacesAndNewlines) : nil
+        self.evidenceId = evidenceId
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
@@ -86,6 +89,9 @@ struct DailyLog: Identifiable, Codable, Equatable {
         if let note = note {
             dict["note"] = note
         }
+        if let evidenceId = evidenceId {
+            dict["evidenceId"] = evidenceId
+        }
         return dict
     }
     
@@ -112,6 +118,7 @@ struct DailyLog: Identifiable, Codable, Equatable {
         self.selectedActivities = selectedActivities
         self.durationMinutes = durationMinutes
         self.note = dictionary["note"] as? String
+        self.evidenceId = dictionary["evidenceId"] as? String
         
         if let createdTime = dictionary["createdAt"] as? TimeInterval {
             self.createdAt = Date(timeIntervalSince1970: createdTime)

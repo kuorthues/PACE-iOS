@@ -103,7 +103,8 @@ final class DailyLogService: ObservableObject {
         date: Date = Date(),
         selectedActivities: [String],
         durationMinutes: Int,
-        note: String? = nil
+        note: String? = nil,
+        evidenceId: String? = nil
     ) async throws -> DailyLog {
         errorMessage = nil
         let uid = activeUserId()
@@ -142,6 +143,9 @@ final class DailyLogService: ObservableObject {
             existing.selectedActivities = selectedActivities
             existing.durationMinutes = durationMinutes
             existing.note = note
+            if evidenceId != nil {
+                existing.evidenceId = evidenceId
+            }
             existing.updatedAt = Date()
             currentLogs[index] = existing
             logToSave = existing
@@ -154,6 +158,7 @@ final class DailyLogService: ObservableObject {
                 selectedActivities: selectedActivities,
                 durationMinutes: durationMinutes,
                 note: note,
+                evidenceId: evidenceId,
                 createdAt: Date(),
                 updatedAt: Date()
             )
@@ -207,5 +212,8 @@ final class DailyLogService: ObservableObject {
         var currentLogs = loadLocalLogs(for: goalId)
         currentLogs.removeAll(where: { $0.id == id || $0.dateString == id })
         saveLocalLogs(currentLogs, for: goalId)
+        
+        // Clean up associated evidence
+        await EvidenceService.shared.clearEvidence(for: goalId, logId: id)
     }
 }

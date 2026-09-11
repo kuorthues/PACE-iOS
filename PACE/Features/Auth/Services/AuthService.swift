@@ -54,6 +54,7 @@ final class AuthService: ObservableObject {
     
     init() {
         checkConfiguration()
+        loadPersistedSession()
         setupAuthStateListener()
     }
     
@@ -122,12 +123,28 @@ final class AuthService: ObservableObject {
         let trimmedName = displayName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let resolvedName = trimmedName.isEmpty ? "PACE Student" : trimmedName
         
-        self.currentUser = PACEUser(
+        let user = PACEUser(
             id: "student_user",
             email: resolvedEmail,
             displayName: resolvedName
         )
+        self.currentUser = user
         self.isAuthenticated = true
+        savePersistedSession(user)
+    }
+    
+    private func savePersistedSession(_ user: PACEUser) {
+        if let data = try? JSONEncoder().encode(user) {
+            UserDefaults.standard.set(data, forKey: "pace_active_user")
+        }
+    }
+    
+    private func loadPersistedSession() {
+        if let data = UserDefaults.standard.data(forKey: "pace_active_user"),
+           let user = try? JSONDecoder().decode(PACEUser.self, from: data) {
+            self.currentUser = user
+            self.isAuthenticated = true
+        }
     }
     
     // MARK: - Registration
@@ -311,6 +328,7 @@ final class AuthService: ObservableObject {
         }
         #endif
         
+        UserDefaults.standard.removeObject(forKey: "pace_active_user")
         self.currentUser = nil
         self.isAuthenticated = false
     }

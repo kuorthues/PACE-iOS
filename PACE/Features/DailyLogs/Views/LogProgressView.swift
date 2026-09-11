@@ -18,6 +18,7 @@ struct LogProgressView: View {
     var onSaved: (() -> Void)? = nil
     
     @ObservedObject var logService = DailyLogService.shared
+    @ObservedObject var evidenceService = EvidenceService.shared
     @Environment(\.dismiss) private var dismiss
     
     @State private var selectedDate: Date = Date()
@@ -28,6 +29,13 @@ struct LogProgressView: View {
     @State private var isExistingEntry: Bool = false
     @State private var showDeleteConfirmation: Bool = false
     @State private var errorMessage: String? = nil
+    
+    // Evidence State
+    @State private var selectedEvidenceImage: UIImage? = nil
+    @State private var evidenceCaption: String = ""
+    @State private var existingEvidence: EvidenceItem? = nil
+    @State private var shouldRemoveEvidence: Bool = false
+    @State private var isSaving: Bool = false
     
     private let presetDurations = [15, 30, 45, 60, 90, 120]
     
@@ -223,13 +231,26 @@ struct LogProgressView: View {
                     
                     PACEDivider()
                     
+                    // Photo Evidence Attachment
+                    EvidencePickerSection(
+                        selectedImage: $selectedEvidenceImage,
+                        caption: $evidenceCaption,
+                        existingEvidence: existingEvidence,
+                        onRemoveExistingEvidence: {
+                            shouldRemoveEvidence = true
+                            existingEvidence = nil
+                        }
+                    )
+                    
+                    PACEDivider()
+                    
                     // Actions
                     VStack(spacing: 12) {
                         PACEButton(
-                            title: isExistingEntry ? "UPDATE RECORD" : "LOCK IN DAILY PROOF",
-                            icon: "checkmark.square",
+                            title: isSaving ? "RECORDING PROOF..." : (isExistingEntry ? "UPDATE RECORD" : "LOCK IN DAILY PROOF"),
+                            icon: isSaving ? nil : "checkmark.square",
                             variant: .primary,
-                            isEnabled: !selectedActivities.isEmpty && durationMinutes > 0
+                            isEnabled: !selectedActivities.isEmpty && durationMinutes > 0 && !isSaving
                         ) {
                             submitLog()
                         }
@@ -290,14 +311,24 @@ struct LogProgressView: View {
     }
     
     private func checkExistingLog() {
+        let dString = DailyLog.dateFormatter.string(from: Calendar.current.startOfDay(for: selectedDate))
         if let existing = logService.fetchLog(for: goal.id, date: selectedDate) {
             isExistingEntry = true
             selectedActivities = Set(existing.selectedActivities)
             durationMinutes = existing.durationMinutes
             customDurationInput = "\(existing.durationMinutes)"
             note = existing.note ?? ""
+            
+            existingEvidence = evidenceService.fetchEvidence(forGoal: goal.id, logId: existing.id) ?? evidenceService.fetchEvidence(forGoal: goal.id, logId: dString)
+            if let ev = existingEvidence {
+                evidenceCaption = ev.caption ?? ""
+            }
         } else {
             isExistingEntry = false
+            existingEvidence = evidenceService.fetchEvidence(forGoal: goal.id, logId: dString)
+            if let ev = existingEvidence {
+                evidenceCaption = ev.caption ?? ""
+            }
         }
     }
     
@@ -312,15 +343,49 @@ struct LogProgressView: View {
             return
         }
         
+        isSaving = true
         Task {
+            defer { isSaving = false }
             do {
-                _ = try await logService.saveLog(
+                // 1. Save or update daily log entry
+                let savedLog = try await logService.saveLog(
                     goalId: goal.id,
                     date: selectedDate,
                     selectedActivities: Array(selectedActivities),
                     durationMinutes: durationMinutes,
                     note: note.isEmpty ? nil : note
                 )
+                
+                // 2. Handle removal of existing evidence if requested
+                if shouldRemoveEvidence, let existing = existingEvidence {
+                    try? await evidenceService.deleteEvidence(existing)
+                }
+                
+                // 3. Handle upload of newly selected evidence
+                if let imageToUpload = selectedEvidenceImage {
+                    do {
+                        let evidenceItem = try await evidenceService.saveEvidence(
+                            goalId: goal.id,
+                            logId: savedLog.id,
+                            image: imageToUpload,
+                            caption: evidenceCaption.isEmpty ? nil : evidenceCaption
+                        )
+                        _ = try await logService.saveLog(
+                            goalId: goal.id,
+                            date: selectedDate,
+                            selectedActivities: Array(selectedActivities),
+                            durationMinutes: durationMinutes,
+                            note: note.isEmpty ? nil : note,
+                            evidenceId: evidenceItem.id
+                        )
+                    } catch {
+                        // Safe failure presentation without corrupting log
+                        self.errorMessage = "Log saved, but photo evidence upload failed: \(error.localizedDescription)"
+                        onSaved?()
+                        return
+                    }
+                }
+                
                 onSaved?()
                 dismiss()
             } catch {

@@ -83,7 +83,11 @@ struct GetStartedView: View {
                         title: "LOGIN TO EXISTING ACCOUNT",
                         variant: .secondary
                     ) {
-                        navigateToLogin = true
+                        if !authService.isFirebaseConfigured {
+                            authService.signInQuick()
+                        } else {
+                            navigateToLogin = true
+                        }
                     }
                 }
                 .padding(.horizontal, 24)
