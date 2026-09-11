@@ -49,17 +49,17 @@ struct GetStartedView: View {
                 
                 Spacer()
                 
-                // Diagnostics Banner if Firebase is pending
+                // Test mode notice if Firebase is pending
                 if !authService.hasGoogleServicePlist || !authService.isFirebaseLinked {
                     VStack(alignment: .leading, spacing: 4) {
                         HStack(spacing: 6) {
-                            Image(systemName: "info.square.fill")
+                            Image(systemName: "bolt.fill")
                                 .foregroundColor(PACEColor.accent)
-                            Text("FIREBASE CONFIGURATION REQUIRED")
+                            Text("LOCAL TEST MODE ACTIVE")
                                 .font(PACETypography.caption())
                                 .foregroundColor(PACEColor.accent)
                         }
-                        Text("Place GoogleService-Info.plist in the PACE target to enable live Firebase Authentication.")
+                        Text("Tap 'LOGIN TO EXISTING ACCOUNT' to enter directly without credentials.")
                             .font(.system(size: 11, weight: .regular))
                             .foregroundColor(PACEColor.textSecondary)
                     }
