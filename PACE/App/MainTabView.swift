@@ -45,7 +45,7 @@ struct MainTabView: View {
         Group {
             switch selectedTab {
             case .goals:
-                GoalsPlaceholderView()
+                GoalsHomeView()
             case .journey:
                 JourneyPlaceholderView()
             case .insights:
