@@ -118,7 +118,7 @@ struct LogProgressView: View {
                         .tint(PACEColor.accent)
                         .padding(12)
                         .paceCard()
-                        .onChange(of: selectedDate) { _ in
+                        .onChange(of: selectedDate) {
                             checkExistingLog()
                         }
                     }

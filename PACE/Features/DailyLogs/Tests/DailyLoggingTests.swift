@@ -79,8 +79,6 @@ struct DailyLoggingTestSuite {
         dateComponents.month = 10
         dateComponents.day = 2 // Friday, Oct 2, 2026
         let friday = calendar.date(from: dateComponents)!
-        let saturday = calendar.date(byAdding: .day, value: 1, to: friday)! // Oct 3 (Sat)
-        let sunday = calendar.date(byAdding: .day, value: 2, to: friday)!   // Oct 4 (Sun)
         let monday = calendar.date(byAdding: .day, value: 3, to: friday)!   // Oct 5 (Mon)
         
         let weekdayGoal = PACEGoal(
@@ -105,8 +103,7 @@ struct DailyLoggingTestSuite {
         // ---------------------------------------------------------------
         // TEST 3: Broken Streak After Missed Scheduled Day
         // ---------------------------------------------------------------
-        // Add Tuesday (scheduled) which is missed, and evaluate on Wednesday
-        let tuesday = calendar.date(byAdding: .day, value: 4, to: friday)! // Oct 6 (Tue) - NOT logged
+        // Scheduled Tuesday is missed, and evaluate on Wednesday
         let wednesday = calendar.date(byAdding: .day, value: 5, to: friday)! // Oct 7 (Wed) - Logged
         let logWed = DailyLog(goalId: weekdayGoal.id, date: wednesday, selectedActivities: ["Study"], durationMinutes: 45)
         

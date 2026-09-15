@@ -149,7 +149,7 @@ struct EvidencePickerSection: View {
                 .buttonStyle(.plain)
             }
         }
-        .onChange(of: photosPickerItem) { newItem in
+        .onChange(of: photosPickerItem) { _, newItem in
             guard let item = newItem else { return }
             loadPickedItem(item)
         }
