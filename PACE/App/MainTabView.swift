@@ -40,6 +40,8 @@ enum PACETab: String, CaseIterable, Identifiable {
 
 struct MainTabView: View {
     @State private var selectedTab: PACETab = .goals
+    @State private var deepLinkedGoal: PACEGoal? = nil
+    @State private var deepLinkedLogGoal: PACEGoal? = nil
     
     var body: some View {
         Group {
@@ -58,6 +60,48 @@ struct MainTabView: View {
             customTabBar
         }
         .background(PACEColor.background.ignoresSafeArea())
+        .sheet(item: $deepLinkedGoal) { goal in
+            NavigationStack {
+                GoalDetailView(goal: goal)
+            }
+        }
+        .sheet(item: $deepLinkedLogGoal) { goal in
+            LogProgressView(goal: goal) {
+                Task {
+                    await GoalService.shared.fetchActiveGoals()
+                    PACEWidgetSyncService.shared.syncPrimaryGoal(
+                        goals: GoalService.shared.goals,
+                        logsByGoal: DailyLogService.shared.logsByGoal
+                    )
+                }
+            }
+        }
+        .onOpenURL { url in
+            handleDeepLink(url: url)
+        }
+    }
+    
+    private func handleDeepLink(url: URL) {
+        guard url.scheme == "pace" else { return }
+        
+        let host = url.host ?? url.path
+        let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        let queryItems = components?.queryItems ?? []
+        let goalId = queryItems.first(where: { $0.name == "id" || $0.name == "goalId" })?.value
+        
+        selectedTab = .goals
+        
+        if host == "goal" || url.path == "/goal" {
+            if let goalId = goalId,
+               let found = GoalService.shared.goals.first(where: { $0.id == goalId }) {
+                deepLinkedGoal = found
+            }
+        } else if host == "log" || url.path == "/log" {
+            if let goalId = goalId,
+               let found = GoalService.shared.goals.first(where: { $0.id == goalId }) {
+                deepLinkedLogGoal = found
+            }
+        }
     }
     
     private var customTabBar: some View {

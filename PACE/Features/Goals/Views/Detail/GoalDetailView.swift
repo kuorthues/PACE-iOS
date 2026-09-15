@@ -280,6 +280,7 @@ struct GoalDetailView: View {
             LogProgressView(goal: goal) {
                 Task {
                     _ = await logService.fetchLogs(for: goal.id)
+                    PACEWidgetSyncService.shared.syncPrimaryGoal(goals: goalService.goals, logsByGoal: logService.logsByGoal)
                 }
             }
         }
@@ -287,12 +288,17 @@ struct GoalDetailView: View {
             LogProgressView(goal: goal, initialDate: log.date) {
                 Task {
                     _ = await logService.fetchLogs(for: goal.id)
+                    PACEWidgetSyncService.shared.syncPrimaryGoal(goals: goalService.goals, logsByGoal: logService.logsByGoal)
                 }
             }
         }
         .sheet(isPresented: $showEditSheet) {
             EditGoalView(goal: goal) { updated in
                 self.goal = updated
+                Task {
+                    await goalService.fetchActiveGoals()
+                    PACEWidgetSyncService.shared.syncPrimaryGoal(goals: goalService.goals, logsByGoal: logService.logsByGoal)
+                }
             }
         }
         .confirmationDialog(
@@ -303,6 +309,7 @@ struct GoalDetailView: View {
             Button("DELETE GOAL", role: .destructive) {
                 Task {
                     try? await goalService.deleteGoal(id: goal.id)
+                    PACEWidgetSyncService.shared.syncPrimaryGoal(goals: goalService.goals, logsByGoal: logService.logsByGoal)
                     dismiss()
                 }
             }

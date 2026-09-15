@@ -61,6 +61,7 @@ struct GoalsHomeView: View {
                 for g in goalService.goals {
                     _ = await logService.fetchLogs(for: g.id)
                 }
+                PACEWidgetSyncService.shared.syncPrimaryGoal(goals: goalService.goals, logsByGoal: logService.logsByGoal)
             }
             .sheet(isPresented: $showCreateGoalSheet) {
                 CreateGoalFlowView(
@@ -71,6 +72,7 @@ struct GoalsHomeView: View {
                     onFinish: {
                         Task {
                             await goalService.fetchActiveGoals()
+                            PACEWidgetSyncService.shared.syncPrimaryGoal(goals: goalService.goals, logsByGoal: logService.logsByGoal)
                         }
                     }
                 )
@@ -79,6 +81,7 @@ struct GoalsHomeView: View {
                 LogProgressView(goal: goal) {
                     Task {
                         _ = await logService.fetchLogs(for: goal.id)
+                        PACEWidgetSyncService.shared.syncPrimaryGoal(goals: goalService.goals, logsByGoal: logService.logsByGoal)
                     }
                 }
             }
