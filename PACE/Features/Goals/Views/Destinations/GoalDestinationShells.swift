@@ -51,21 +51,7 @@ struct JourneyDestinationView: View {
     let goal: PACEGoal
     
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                Text("JOURNEY TRAIL")
-                    .font(PACETypography.titleLarge())
-                    .foregroundColor(PACEColor.textPrimary)
-                
-                Text("Chronological journey records for \(goal.title) will appear here.")
-                    .font(PACETypography.body())
-                    .foregroundColor(PACEColor.textSecondary)
-            }
-            .padding(20)
-        }
-        .background(PACEColor.background.ignoresSafeArea())
-        .navigationTitle("JOURNEY")
-        .navigationBarTitleDisplayMode(.inline)
+        JourneyDetailView(goal: goal)
     }
 }
 

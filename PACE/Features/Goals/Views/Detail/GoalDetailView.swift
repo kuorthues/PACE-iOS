@@ -135,6 +135,11 @@ struct GoalDetailView: View {
                 .padding(16)
                 .paceCard()
                 
+                // Compact Journey Timeline Preview
+                JourneyPreviewSection(goal: goal, logs: goalLogs) {
+                    navigateToJourney = true
+                }
+                
                 // Log Progress Action
                 VStack(alignment: .leading, spacing: 10) {
                     Text("PROGRESS LOGGING")
@@ -306,7 +311,7 @@ struct GoalDetailView: View {
             Text("Are you sure you want to delete '\(goal.title)'? All associated logs will also be removed.")
         }
         .navigationDestination(isPresented: $navigateToJourney) {
-            JourneyDestinationView(goal: goal)
+            JourneyDetailView(goal: goal)
         }
         .navigationDestination(isPresented: $navigateToActivities) {
             ActivitiesDestinationView(goal: goal)
