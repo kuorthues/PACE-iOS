@@ -66,10 +66,7 @@ final class AuthService: ObservableObject {
         // 2. Check if Firebase SDK is compiled in
         #if canImport(FirebaseAuth) && canImport(FirebaseCore)
         isFirebaseLinked = true
-        if hasGoogleServicePlist {
-            if FirebaseApp.app() == nil {
-                FirebaseApp.configure()
-            }
+        if hasGoogleServicePlist && FirebaseApp.app() != nil {
             isFirebaseConfigured = true
         } else {
             isFirebaseConfigured = false
