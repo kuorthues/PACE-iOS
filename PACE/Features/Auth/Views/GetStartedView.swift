@@ -2,11 +2,12 @@
 //  GetStartedView.swift
 //  PACE
 //
-//  Initial landing screen for unauthenticated users.
-//  Copy adheres to PACE requirements:
-//  - PACE
-//  - SHOW UP FOR WHAT MATTERS.
-//  - Set the date. Show up consistently. Keep the proof.
+//  Screen 1: Landing screen matching Figma prototype:
+//  - Top-left P A C E neon tracked branding
+//  - Massive white condensed hero: SHOW UP / FOR WHAT / MATTERS.
+//  - Subdued subtitle: Set the date. Show up consistently. / Keep the proof.
+//  - Primary neon CTA: GET STARTED →
+//  - Secondary outlined CTA: I ALREADY HAVE AN ACCOUNT →
 //
 
 import SwiftUI
@@ -19,68 +20,59 @@ struct GetStartedView: View {
     var body: some View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 0) {
-                Spacer()
+                // Top Brand Mark
+                Text("P A C E")
+                    .font(.system(size: 11, weight: .black, design: .monospaced))
+                    .foregroundColor(PACETheme.accent)
+                    .tracking(3.0)
+                    .padding(.top, 16)
+                    .padding(.horizontal, 24)
                 
-                // Brand Header
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack(spacing: 8) {
-                        Rectangle()
-                            .fill(PACEColor.accent)
-                            .frame(width: 8, height: 28)
-                        
-                        Text("PACE")
-                            .font(.system(size: 36, weight: .black, design: .default))
-                            .foregroundColor(PACEColor.textPrimary)
-                            .tracking(2.0)
-                    }
+                Spacer(minLength: 40)
+                
+                // Hero Block
+                VStack(alignment: .leading, spacing: 24) {
+                    Text("SHOW UP\nFOR WHAT\nMATTERS.")
+                        .font(PACETextStyle.displayHero)
+                        .foregroundColor(PACETheme.primaryText)
+                        .lineSpacing(-6)
+                        .minimumScaleFactor(0.85)
                     
-                    Text("SHOW UP FOR WHAT MATTERS.")
-                        .font(.system(size: 20, weight: .bold, design: .default))
-                        .foregroundColor(PACEColor.accent)
-                        .tracking(0.5)
-                    
-                    Text("Set the date. Show up consistently. Keep the proof.")
-                        .font(PACETypography.body())
-                        .foregroundColor(PACEColor.textSecondary)
+                    Text("Set the date. Show up consistently.\nKeep the proof.")
+                        .font(.system(size: 16, weight: .regular))
+                        .foregroundColor(PACETheme.secondaryText)
                         .lineSpacing(4)
-                        .padding(.top, 4)
                 }
                 .padding(.horizontal, 24)
                 
-                Spacer()
+                Spacer(minLength: 40)
                 
-                // Test mode notice if Firebase is pending
+                // Dev/Test Notice if bypass active
                 if !authService.hasGoogleServicePlist || !authService.isFirebaseLinked {
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack(spacing: 6) {
-                            Image(systemName: "bolt.fill")
-                                .foregroundColor(PACEColor.accent)
-                            Text("LOCAL TEST MODE ACTIVE")
-                                .font(PACETypography.caption())
-                                .foregroundColor(PACEColor.accent)
-                        }
-                        Text("Tap 'LOGIN TO EXISTING ACCOUNT' to enter directly without credentials.")
-                            .font(.system(size: 11, weight: .regular))
-                            .foregroundColor(PACEColor.textSecondary)
+                    HStack(spacing: 8) {
+                        Image(systemName: "bolt.fill")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(PACETheme.accent)
+                        Text("LOCAL BYPASS READY — TAP BELOW TO ENTER")
+                            .font(.system(size: 9, weight: .bold, design: .monospaced))
+                            .foregroundColor(PACETheme.accent)
+                            .tracking(1.0)
                     }
-                    .padding(12)
-                    .paceCard(borderColor: PACEColor.border)
                     .padding(.horizontal, 24)
-                    .padding(.bottom, 20)
+                    .padding(.bottom, 16)
                 }
                 
                 // Action Buttons
                 VStack(spacing: 12) {
                     PACEButton(
-                        title: "CREATE ACCOUNT",
-                        icon: "arrow.right",
+                        title: "GET STARTED →",
                         variant: .primary
                     ) {
                         navigateToRegister = true
                     }
                     
                     PACEButton(
-                        title: "LOGIN TO EXISTING ACCOUNT",
+                        title: "I ALREADY HAVE AN ACCOUNT →",
                         variant: .secondary
                     ) {
                         if !authService.isFirebaseConfigured {
@@ -91,10 +83,18 @@ struct GetStartedView: View {
                     }
                 }
                 .padding(.horizontal, 24)
-                .padding(.bottom, 40)
+                .padding(.bottom, 24)
+                
+                // Bottom Brand Tagline
+                Text("P A C E   —   S E T   T H E   D A T E .   S H O W   U P .   K E E P   T H E   P R O O F .")
+                    .font(.system(size: 8, weight: .medium, design: .monospaced))
+                    .foregroundColor(Color(white: 0.25))
+                    .tracking(1.0)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.bottom, 12)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(PACEColor.background.ignoresSafeArea())
+            .background(PACETheme.background.ignoresSafeArea())
             .navigationDestination(isPresented: $navigateToRegister) {
                 CreateAccountView()
             }

@@ -1,0 +1,21 @@
+# Xcode
+## User settings
+xcuserdata/
+*.xcuserstate
+project.xcworkspace/xcuserdata/
+
+## Build generated
+build/
+DerivedData/
+
+# Swift Package Manager
+# Uncomment if you don't want to track resolved dependencies:
+# Package.resolved
+.build/
+
+# macOS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes

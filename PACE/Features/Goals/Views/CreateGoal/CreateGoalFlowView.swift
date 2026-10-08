@@ -2,12 +2,13 @@
 //  CreateGoalFlowView.swift
 //  PACE
 //
-//  Four-step goal creation flow:
-//  Step 1: Goal Title
-//  Step 2: Future Target Date
-//  Step 3: Activity Types (Study, Review, Practice, Mock Exam + Custom)
-//  Step 4: Schedule (Every Day, Weekdays, Custom Weekdays)
-//  Confirmation: Days remaining, "Log First Day" or "Go to Dashboard"
+//  Four-step goal creation flow matching Figma prototype:
+//  - Top row: ← BACK | NEW GOAL 0X / 04 | CANCEL
+//  - Step 1: WHAT ARE YOU WORKING TOWARD? / NAME YOUR GOAL
+//  - Step 2: WHEN DOES IT MATTER? / Huge #A7FF19 date / XX DAYS FROM TODAY
+//  - Step 3: WHAT COUNTS AS SHOWING UP? / YOUR ACTIVITIES / Square checkboxes + dividers
+//  - Step 4: HOW OFTEN WILL YOU SHOW UP? / YOUR SCHEDULE / Square selectors
+//  - GOAL CREATED: P A C E / GOAL CREATED / Huge #A7FF19 days / START TODAY. / CTAs
 //
 
 import SwiftUI
@@ -25,7 +26,7 @@ struct CreateGoalFlowView: View {
     @State private var title: String = ""
     
     // Step 2: Target Date
-    @State private var targetDate: Date = Calendar.current.date(byAdding: .day, value: 30, to: Date()) ?? Date()
+    @State private var targetDate: Date = Calendar.current.date(byAdding: .day, value: 43, to: Date()) ?? Date()
     
     // Step 3: Activity Types
     @State private var availableActivities: [String] = ["Study", "Review", "Practice", "Mock Exam"]
@@ -35,7 +36,7 @@ struct CreateGoalFlowView: View {
     // Step 4: Schedule
     enum ScheduleType: String, CaseIterable {
         case everyDay = "EVERY DAY"
-        case weekdays = "WEEKDAYS (MON-FRI)"
+        case weekdays = "WEEKDAYS"
         case custom = "CUSTOM"
     }
     @State private var scheduleType: ScheduleType = .everyDay
@@ -50,49 +51,36 @@ struct CreateGoalFlowView: View {
     ]
     
     var body: some View {
-        NavigationStack {
+        VStack(spacing: 0) {
+            if currentStep <= 4 {
+                // Fixed Figma Top Navigation Bar
+                stepTopBar
+                
+                // Thin Divider
+                Rectangle()
+                    .fill(PACETheme.border)
+                    .frame(height: 1)
+            }
+            
             ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    if currentStep <= 4 {
-                        // Step Progress Header
-                        HStack {
-                            Text("STEP \(currentStep) OF 4")
-                                .font(PACETypography.metricSmall())
-                                .foregroundColor(PACEColor.accent)
-                            Spacer()
-                            Text(stepTitle(currentStep).uppercased())
-                                .font(PACETypography.caption())
-                                .foregroundColor(PACEColor.textSecondary)
-                        }
-                        .padding(.top, 8)
-                        
-                        // Sharp Step Progress Bar
-                        GeometryReader { proxy in
-                            ZStack(alignment: .leading) {
-                                Rectangle()
-                                    .fill(PACEColor.surfaceElevated)
-                                    .frame(height: 4)
-                                Rectangle()
-                                    .fill(PACEColor.accent)
-                                    .frame(width: proxy.size.width * (CGFloat(currentStep) / 4.0), height: 4)
-                            }
-                        }
-                        .frame(height: 4)
-                        
-                        PACEDivider()
-                    }
-                    
-                    // Error message
+                VStack(alignment: .leading, spacing: 0) {
+                    // Error message banner
                     if let error = errorMessage {
                         HStack(spacing: 8) {
-                            Image(systemName: "exclamationmark.square.fill")
-                                .foregroundColor(PACEColor.accent)
+                            Rectangle()
+                                .fill(PACETheme.accent)
+                                .frame(width: 3)
                             Text(error)
                                 .font(PACETypography.body())
-                                .foregroundColor(PACEColor.textPrimary)
+                                .foregroundColor(PACETheme.primaryText)
                         }
                         .padding(12)
-                        .paceCard(borderColor: PACEColor.accent)
+                        .background(PACETheme.surface)
+                        .overlay(
+                            Rectangle().stroke(PACETheme.border, lineWidth: 1)
+                        )
+                        .padding(.horizontal, 24)
+                        .padding(.top, 16)
                     }
                     
                     // Step Content
@@ -110,95 +98,134 @@ struct CreateGoalFlowView: View {
                             goalCreatedConfirmationView
                         }
                     }
-                    
-                    Spacer(minLength: 30)
-                }
-                .padding(.horizontal, 20)
-            }
-            .background(PACEColor.background.ignoresSafeArea())
-            .navigationTitle(currentStep <= 4 ? "NEW GOAL" : "CONFIRMED")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(PACEColor.background, for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
-            .toolbar {
-                if currentStep <= 4 {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("CANCEL") {
-                            dismiss()
-                        }
-                        .font(PACETypography.caption())
-                        .foregroundColor(PACEColor.textSecondary)
-                    }
                 }
             }
         }
+        .background(PACETheme.background.ignoresSafeArea())
     }
     
-    private func stepTitle(_ step: Int) -> String {
-        switch step {
-        case 1: return "Goal Title"
-        case 2: return "Target Date"
-        case 3: return "Activity Types"
-        case 4: return "Schedule"
-        default: return "Confirmation"
+    // MARK: - Top Navigation Bar (Figma Parity)
+    
+    private var stepTopBar: some View {
+        HStack {
+            Button(action: {
+                if currentStep > 1 {
+                    errorMessage = nil
+                    currentStep -= 1
+                } else {
+                    dismiss()
+                }
+            }) {
+                Text("← BACK")
+                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .foregroundColor(PACETheme.secondaryText)
+                    .tracking(1.0)
+            }
+            .buttonStyle(.plain)
+            
+            Spacer()
+            
+            Text(String(format: "NEW GOAL %02d / 04", currentStep))
+                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                .foregroundColor(PACETheme.accent)
+                .tracking(2.0)
+            
+            Spacer()
+            
+            Button(action: {
+                dismiss()
+            }) {
+                Text("CANCEL")
+                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .foregroundColor(PACETheme.secondaryText)
+                    .tracking(1.0)
+            }
+            .buttonStyle(.plain)
         }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 16)
     }
     
     // MARK: - Step 1: Title
+    
     private var step1TitleView: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("WHAT ARE YOU WORKING TOWARDS?")
-                .font(PACETypography.titleLarge())
-                .foregroundColor(PACEColor.textPrimary)
-            
-            Text("Define a specific, measurable objective you will show up for.")
-                .font(PACETypography.body())
-                .foregroundColor(PACEColor.textSecondary)
-            
-            PACETextField(
-                placeholder: "e.g., Board Exam 2027, iOS Portfolio, JLPT N3",
-                text: $title,
-                label: "Goal Title"
-            )
-            
-            PACEButton(
-                title: "CONTINUE TO TARGET DATE",
-                icon: "arrow.right",
-                variant: .primary,
-                isEnabled: !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ) {
-                errorMessage = nil
-                currentStep = 2
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("WHAT ARE YOU WORKING TOWARD?")
+                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .foregroundColor(PACETheme.secondaryText)
+                    .tracking(1.5)
+                
+                Text("NAME YOUR\nGOAL")
+                    .font(PACETextStyle.displayLarge)
+                    .foregroundColor(PACETheme.primaryText)
+                    .lineSpacing(-4)
             }
-            .padding(.top, 10)
+            .padding(.top, 24)
+            .padding(.horizontal, 24)
+            
+            VStack(alignment: .leading, spacing: 8) {
+                PACETextField(
+                    placeholder: "E.G. PASS AZ-900 CERTIFICATION",
+                    text: $title,
+                    label: "GOAL TITLE"
+                )
+                
+                Text("Be specific. The more real it feels, the more it matters.")
+                    .font(.system(size: 13, weight: .regular))
+                    .foregroundColor(PACETheme.secondaryText)
+                    .padding(.top, 4)
+            }
+            .padding(.top, 32)
+            .padding(.horizontal, 24)
+            
+            Spacer(minLength: 120)
+            
+            VStack {
+                PACEButton(
+                    title: "CONTINUE →",
+                    variant: .primary,
+                    isEnabled: !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ) {
+                    errorMessage = nil
+                    currentStep = 2
+                }
+            }
+            .padding(.horizontal, 24)
+            .padding(.bottom, 32)
         }
     }
     
     // MARK: - Step 2: Target Date
+    
     private var step2DateView: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("SET THE TARGET DATE")
-                .font(PACETypography.titleLarge())
-                .foregroundColor(PACEColor.textPrimary)
-            
-            Text("Select the deadline for this goal. Target date must be in the future.")
-                .font(PACETypography.body())
-                .foregroundColor(PACEColor.textSecondary)
-            
-            // Computed Days Remaining Metric
-            let days = calculatedDaysRemaining
-            PACEMetricView(
-                label: "Countdown to Target",
-                value: String(format: "%02d", max(0, days)),
-                unit: "DAYS REMAINING",
-                isAccentValue: true
-            )
-            
+        let days = calculatedDaysRemaining
+        let formattedDate = formattedTargetDate
+        
+        return VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 8) {
-                Text("DEADLINE DATE")
-                    .font(PACETypography.caption())
-                    .foregroundColor(PACEColor.textSecondary)
+                Text("WHEN DOES IT MATTER?")
+                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .foregroundColor(PACETheme.secondaryText)
+                    .tracking(1.5)
                 
+                // Huge selected date using #A7FF19
+                Text(formattedDate)
+                    .font(.system(size: 36, weight: .black, design: .monospaced))
+                    .foregroundColor(PACETheme.accent)
+                    .tracking(1.0)
+                    .padding(.top, 4)
+                
+                Text("\(days) DAYS FROM TODAY")
+                    .font(.system(size: 13, weight: .bold, design: .monospaced))
+                    .foregroundColor(PACETheme.secondaryText)
+                    .tracking(1.5)
+            }
+            .padding(.top, 24)
+            .padding(.horizontal, 24)
+            
+            // Native accessible date picker styled cleanly
+            VStack(alignment: .leading, spacing: 8) {
                 DatePicker(
                     "",
                     selection: $targetDate,
@@ -207,24 +234,21 @@ struct CreateGoalFlowView: View {
                 )
                 .datePickerStyle(.graphical)
                 .colorScheme(.dark)
-                .tint(PACEColor.accent)
+                .tint(PACETheme.accent)
                 .padding(12)
-                .paceCard()
+                .background(PACETheme.surface)
+                .overlay(
+                    Rectangle().stroke(PACETheme.border, lineWidth: 1)
+                )
             }
+            .padding(.top, 24)
+            .padding(.horizontal, 24)
             
-            HStack(spacing: 12) {
+            Spacer(minLength: 40)
+            
+            VStack {
                 PACEButton(
-                    title: "BACK",
-                    variant: .secondary,
-                    isFullWidth: false
-                ) {
-                    errorMessage = nil
-                    currentStep = 1
-                }
-                
-                PACEButton(
-                    title: "SELECT ACTIVITIES",
-                    icon: "arrow.right",
+                    title: "CONTINUE →",
                     variant: .primary,
                     isEnabled: days > 0
                 ) {
@@ -236,8 +260,15 @@ struct CreateGoalFlowView: View {
                     }
                 }
             }
-            .padding(.top, 10)
+            .padding(.horizontal, 24)
+            .padding(.bottom, 32)
         }
+    }
+    
+    private var formattedTargetDate: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM dd yyyy"
+        return formatter.string(from: targetDate).uppercased()
     }
     
     private var calculatedDaysRemaining: Int {
@@ -249,20 +280,28 @@ struct CreateGoalFlowView: View {
     }
     
     // MARK: - Step 3: Activity Types
+    
     private var step3ActivitiesView: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("SELECT ACTIVITY TYPES")
-                .font(PACETypography.titleLarge())
-                .foregroundColor(PACEColor.textPrimary)
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("WHAT COUNTS AS SHOWING UP?")
+                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .foregroundColor(PACETheme.secondaryText)
+                    .tracking(1.5)
+                
+                Text("YOUR\nACTIVITIES")
+                    .font(PACETextStyle.displayLarge)
+                    .foregroundColor(PACETheme.primaryText)
+                    .lineSpacing(-4)
+            }
+            .padding(.top, 24)
+            .padding(.horizontal, 24)
             
-            Text("Choose the methods and activities you will use to log proof towards this goal.")
-                .font(PACETypography.body())
-                .foregroundColor(PACEColor.textSecondary)
-            
-            // Available Activity Checkboxes
-            VStack(spacing: 10) {
+            // Activity rows separated by thin dividers
+            VStack(spacing: 0) {
                 ForEach(availableActivities, id: \.self) { activity in
                     let isSelected = selectedActivities.contains(activity)
+                    
                     Button(action: {
                         if isSelected {
                             selectedActivities.remove(activity)
@@ -271,42 +310,43 @@ struct CreateGoalFlowView: View {
                         }
                     }) {
                         HStack {
-                            Rectangle()
-                                .fill(isSelected ? PACEColor.accent : Color.clear)
-                                .frame(width: 18, height: 18)
-                                .overlay(
-                                    Rectangle()
-                                        .stroke(isSelected ? PACEColor.accent : PACEColor.border, lineWidth: 1)
-                                )
-                                .overlay(
-                                    Image(systemName: "checkmark")
-                                        .font(.system(size: 11, weight: .black))
-                                        .foregroundColor(PACEColor.background)
-                                        .opacity(isSelected ? 1.0 : 0.0)
-                                )
-                            
                             Text(activity.uppercased())
-                                .font(PACETypography.body())
-                                .foregroundColor(PACEColor.textPrimary)
+                                .font(.system(size: 15, weight: isSelected ? .bold : .medium, design: .monospaced))
+                                .foregroundColor(isSelected ? PACETheme.primaryText : PACETheme.secondaryText)
                             
                             Spacer()
+                            
+                            PACECheckbox(isSelected: isSelected) {
+                                if isSelected {
+                                    selectedActivities.remove(activity)
+                                } else {
+                                    selectedActivities.insert(activity)
+                                }
+                            }
                         }
-                        .padding(14)
-                        .paceCard(borderColor: isSelected ? PACEColor.accent : PACEColor.border)
+                        .padding(.vertical, 16)
                     }
                     .buttonStyle(.plain)
+                    
+                    Rectangle()
+                        .fill(PACETheme.border)
+                        .frame(height: 1)
                 }
             }
+            .padding(.top, 20)
+            .padding(.horizontal, 24)
             
             // Custom Activity Input
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 10) {
                 Text("ADD CUSTOM ACTIVITY")
-                    .font(PACETypography.caption())
-                    .foregroundColor(PACEColor.textSecondary)
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundColor(PACETheme.secondaryText)
+                    .tracking(1.5)
+                    .padding(.top, 20)
                 
                 HStack(spacing: 8) {
                     PACETextField(
-                        placeholder: "e.g., Coding, Flashcards",
+                        placeholder: "E.G. CODING, FLASHCARDS",
                         text: $customActivityInput
                     )
                     
@@ -323,22 +363,16 @@ struct CreateGoalFlowView: View {
                             customActivityInput = ""
                         }
                     }
+                    .frame(width: 80)
                 }
             }
+            .padding(.horizontal, 24)
             
-            HStack(spacing: 12) {
+            Spacer(minLength: 40)
+            
+            VStack {
                 PACEButton(
-                    title: "BACK",
-                    variant: .secondary,
-                    isFullWidth: false
-                ) {
-                    errorMessage = nil
-                    currentStep = 2
-                }
-                
-                PACEButton(
-                    title: "CONFIGURE SCHEDULE",
-                    icon: "arrow.right",
+                    title: "CONTINUE →",
                     variant: .primary,
                     isEnabled: !selectedActivities.isEmpty
                 ) {
@@ -350,25 +384,34 @@ struct CreateGoalFlowView: View {
                     }
                 }
             }
-            .padding(.top, 10)
+            .padding(.horizontal, 24)
+            .padding(.bottom, 32)
         }
     }
     
     // MARK: - Step 4: Schedule
+    
     private var step4ScheduleView: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("COMMITMENT SCHEDULE")
-                .font(PACETypography.titleLarge())
-                .foregroundColor(PACEColor.textPrimary)
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("HOW OFTEN WILL YOU SHOW UP?")
+                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .foregroundColor(PACETheme.secondaryText)
+                    .tracking(1.5)
+                
+                Text("YOUR\nSCHEDULE")
+                    .font(PACETextStyle.displayLarge)
+                    .foregroundColor(PACETheme.primaryText)
+                    .lineSpacing(-4)
+            }
+            .padding(.top, 24)
+            .padding(.horizontal, 24)
             
-            Text("Define on which days you are expected to log evidence.")
-                .font(PACETypography.body())
-                .foregroundColor(PACEColor.textSecondary)
-            
-            // Preset schedule choices
-            VStack(spacing: 10) {
+            // Schedule preset rows separated by thin dividers
+            VStack(spacing: 0) {
                 ForEach(ScheduleType.allCases, id: \.self) { type in
                     let isSelected = (scheduleType == type)
+                    
                     Button(action: {
                         scheduleType = type
                         switch type {
@@ -381,33 +424,46 @@ struct CreateGoalFlowView: View {
                         }
                     }) {
                         HStack {
-                            Rectangle()
-                                .fill(isSelected ? PACEColor.accent : Color.clear)
-                                .frame(width: 16, height: 16)
-                                .overlay(
-                                    Rectangle()
-                                        .stroke(isSelected ? PACEColor.accent : PACEColor.border, lineWidth: 1)
-                                )
-                            
                             Text(type.rawValue)
-                                .font(PACETypography.body())
-                                .foregroundColor(PACEColor.textPrimary)
+                                .font(.system(size: 15, weight: isSelected ? .bold : .medium, design: .monospaced))
+                                .foregroundColor(isSelected ? PACETheme.primaryText : PACETheme.secondaryText)
                             
                             Spacer()
+                            
+                            // Square selector
+                            Rectangle()
+                                .fill(isSelected ? PACETheme.accent : Color.clear)
+                                .frame(width: 20, height: 20)
+                                .overlay(
+                                    Rectangle().stroke(isSelected ? PACETheme.accent : PACETheme.border, lineWidth: 1)
+                                )
+                                .overlay(
+                                    Image(systemName: "checkmark")
+                                        .font(.system(size: 12, weight: .black))
+                                        .foregroundColor(PACETheme.background)
+                                        .opacity(isSelected ? 1.0 : 0.0)
+                                )
                         }
-                        .padding(14)
-                        .paceCard(borderColor: isSelected ? PACEColor.accent : PACEColor.border)
+                        .padding(.vertical, 16)
                     }
                     .buttonStyle(.plain)
+                    
+                    Rectangle()
+                        .fill(PACETheme.border)
+                        .frame(height: 1)
                 }
             }
+            .padding(.top, 20)
+            .padding(.horizontal, 24)
             
-            // Custom Weekday Checkboxes if Custom selected
+            // Custom Weekday Checkboxes
             if scheduleType == .custom {
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 10) {
                     Text("SELECT WEEKDAYS")
-                        .font(PACETypography.caption())
-                        .foregroundColor(PACEColor.textSecondary)
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .foregroundColor(PACETheme.secondaryText)
+                        .tracking(1.5)
+                        .padding(.top, 16)
                     
                     HStack(spacing: 6) {
                         ForEach(weekdayNames, id: \.id) { day in
@@ -422,95 +478,95 @@ struct CreateGoalFlowView: View {
                                 }
                             }) {
                                 Text(day.name)
-                                    .font(PACETypography.metricSmall())
+                                    .font(.system(size: 11, weight: .bold, design: .monospaced))
                                     .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 10)
-                                    .background(isDaySelected ? PACEColor.accent : PACEColor.surfaceElevated)
-                                    .foregroundColor(isDaySelected ? PACEColor.background : PACEColor.textSecondary)
+                                    .padding(.vertical, 12)
+                                    .background(isDaySelected ? PACETheme.accent : PACETheme.surface)
+                                    .foregroundColor(isDaySelected ? PACETheme.background : PACETheme.secondaryText)
                                     .overlay(
                                         Rectangle()
-                                            .stroke(isDaySelected ? PACEColor.accent : PACEColor.border, lineWidth: 1)
+                                            .stroke(isDaySelected ? PACETheme.accent : PACETheme.border, lineWidth: 1)
                                     )
                             }
                             .buttonStyle(.plain)
                         }
                     }
                 }
-                .padding(.top, 4)
+                .padding(.horizontal, 24)
             }
             
-            HStack(spacing: 12) {
+            Spacer(minLength: 40)
+            
+            VStack {
                 PACEButton(
-                    title: "BACK",
-                    variant: .secondary,
-                    isFullWidth: false
-                ) {
-                    errorMessage = nil
-                    currentStep = 3
-                }
-                
-                PACEButton(
-                    title: goalService.isLoading ? "CREATING..." : "CREATE GOAL",
-                    icon: goalService.isLoading ? nil : "checkmark.square",
+                    title: goalService.isLoading ? "CREATING..." : "CREATE GOAL →",
                     variant: .primary,
                     isEnabled: !goalService.isLoading && !selectedWeekdays.isEmpty
                 ) {
                     submitGoalCreation()
                 }
             }
-            .padding(.top, 10)
+            .padding(.horizontal, 24)
+            .padding(.bottom, 32)
         }
     }
     
-    // MARK: - Confirmation Screen
+    // MARK: - Goal Created Confirmation View
+    
     private var goalCreatedConfirmationView: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            HStack(spacing: 8) {
-                Rectangle()
-                    .fill(PACEColor.accent)
-                    .frame(width: 8, height: 28)
+        VStack(alignment: .leading, spacing: 0) {
+            // Header
+            VStack(alignment: .leading, spacing: 12) {
+                Text("P A C E")
+                    .font(.system(size: 11, weight: .black, design: .monospaced))
+                    .foregroundColor(PACETheme.accent)
+                    .tracking(3.0)
+                    .padding(.top, 16)
+                
                 Text("GOAL CREATED")
-                    .font(PACETypography.titleLarge())
-                    .foregroundColor(PACEColor.textPrimary)
+                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .foregroundColor(PACETheme.secondaryText)
+                    .tracking(2.0)
             }
+            .padding(.horizontal, 24)
             
-            Text("Your commitment is locked in. Show up consistently and keep the proof.")
-                .font(PACETypography.body())
-                .foregroundColor(PACEColor.textSecondary)
+            Spacer(minLength: 24)
             
-            if let goal = createdGoal {
-                VStack(alignment: .leading, spacing: 12) {
+            // Goal Content
+            VStack(alignment: .leading, spacing: 16) {
+                if let goal = createdGoal {
                     Text(goal.title.uppercased())
-                        .font(PACETypography.sectionHeader())
-                        .foregroundColor(PACEColor.textPrimary)
+                        .font(PACETextStyle.displayMedium)
+                        .foregroundColor(PACETheme.primaryText)
                     
-                    PACEDivider()
-                    
-                    HStack(spacing: 12) {
-                        PACEMetricView(
-                            label: "Days Remaining",
-                            value: String(format: "%02d", goal.daysRemaining),
-                            unit: "DAYS",
-                            isAccentValue: true
-                        )
+                    // Huge #A7FF19 Days Remaining
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text("\(goal.daysRemaining)")
+                            .font(.system(size: 64, weight: .black, design: .monospaced))
+                            .foregroundColor(PACETheme.accent)
+                            .tracking(1.0)
                         
-                        PACEMetricView(
-                            label: "Schedule",
-                            value: goal.scheduleDescription,
-                            unit: nil
-                        )
+                        Text("DAYS.")
+                            .font(PACETextStyle.displayLarge)
+                            .foregroundColor(PACETheme.primaryText)
+                            .lineSpacing(-4)
                     }
+                    .padding(.vertical, 8)
                 }
-                .padding(16)
-                .paceCard()
+                
+                Text("START TODAY.")
+                    .font(PACETextStyle.displayLarge)
+                    .foregroundColor(PACETheme.primaryText)
+                    .lineSpacing(-4)
             }
+            .padding(.horizontal, 24)
             
-            PACEDivider()
+            Spacer(minLength: 32)
             
+            // Action Buttons
             VStack(spacing: 12) {
                 PACEButton(
-                    title: "LOG FIRST DAY",
-                    icon: "plus.square",
+                    title: "LOG FIRST DAY →",
                     variant: .primary
                 ) {
                     if let goal = createdGoal {
@@ -520,14 +576,17 @@ struct CreateGoalFlowView: View {
                 }
                 
                 PACEButton(
-                    title: "GO TO DASHBOARD",
+                    title: "GO TO DASHBOARD →",
                     variant: .secondary
                 ) {
                     onFinish?()
                     dismiss()
                 }
             }
+            .padding(.horizontal, 24)
+            .padding(.bottom, 32)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
     
     private func submitGoalCreation() {

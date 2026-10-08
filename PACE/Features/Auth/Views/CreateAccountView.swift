@@ -2,9 +2,12 @@
 //  CreateAccountView.swift
 //  PACE
 //
-//  Account registration screen with strict input validation:
-//  - Name, Email, Password, Confirm Password
-//  - Zero corner radius, sharp rectangular design
+//  Screen 2: Registration screen matching Figma prototype:
+//  - P A C E tracked header
+//  - Massive CREATE / ACCOUNT display typography
+//  - Sharp bordered fields: NAME, EMAIL, PASSWORD, CONFIRM PASSWORD
+//  - Primary CTA: CREATE ACCOUNT →
+//  - Secondary: ALREADY HAVE AN ACCOUNT? LOG IN →
 //
 
 import SwiftUI
@@ -21,103 +24,107 @@ struct CreateAccountView: View {
     
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                // Header
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("CREATE ACCOUNT")
-                        .font(PACETypography.titleLarge())
-                        .foregroundColor(PACEColor.textPrimary)
+            VStack(alignment: .leading, spacing: 28) {
+                // Header Block
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("P A C E")
+                        .font(.system(size: 11, weight: .black, design: .monospaced))
+                        .foregroundColor(PACETheme.accent)
+                        .tracking(3.0)
+                        .padding(.top, 8)
                     
-                    Text("Register with your email to start tracking your pace.")
-                        .font(PACETypography.body())
-                        .foregroundColor(PACEColor.textSecondary)
+                    Text("CREATE\nACCOUNT")
+                        .font(PACETextStyle.displayLarge)
+                        .foregroundColor(PACETheme.primaryText)
+                        .lineSpacing(-4)
                 }
-                .padding(.top, 10)
-                
-                PACEDivider()
                 
                 // Error Banner
                 if let errorText = localError ?? authService.errorMessage {
                     HStack(alignment: .top, spacing: 10) {
-                        Image(systemName: "exclamationmark.square.fill")
-                            .foregroundColor(PACEColor.accent)
+                        Rectangle()
+                            .fill(PACETheme.accent)
+                            .frame(width: 3)
                         Text(errorText)
                             .font(PACETypography.body())
-                            .foregroundColor(PACEColor.textPrimary)
+                            .foregroundColor(PACETheme.primaryText)
                     }
                     .padding(12)
-                    .paceCard(borderColor: PACEColor.accent)
+                    .background(PACETheme.surface)
+                    .overlay(
+                        Rectangle().stroke(PACETheme.border, lineWidth: 1)
+                    )
                 }
                 
                 // Form Fields
-                VStack(spacing: 16) {
+                VStack(spacing: 20) {
                     PACETextField(
-                        placeholder: "Enter your full name",
+                        placeholder: "YOUR NAME",
                         text: $name,
-                        label: "Full Name"
+                        label: "NAME"
                     )
                     
                     PACETextField(
-                        placeholder: "name@example.com",
+                        placeholder: "NAME@EXAMPLE.COM",
                         text: $email,
-                        label: "Email Address"
+                        label: "EMAIL"
                     )
                     .textInputAutocapitalization(.never)
                     .keyboardType(.emailAddress)
                     .autocorrectionDisabled(true)
                     
                     PACETextField(
-                        placeholder: "At least 6 characters",
+                        placeholder: "AT LEAST 6 CHARACTERS",
                         text: $password,
-                        label: "Password",
+                        label: "PASSWORD",
                         isSecure: true
                     )
                     
                     PACETextField(
-                        placeholder: "Re-enter password",
+                        placeholder: "CONFIRM PASSWORD",
                         text: $confirmPassword,
-                        label: "Confirm Password",
+                        label: "CONFIRM PASSWORD",
                         isSecure: true
                     )
                 }
                 
-                PACEDivider()
-                
-                // Submit Button
-                PACEButton(
-                    title: authService.isLoading ? "CREATING ACCOUNT..." : "REGISTER",
-                    icon: authService.isLoading ? nil : "checkmark.square",
-                    variant: .primary,
-                    isEnabled: !authService.isLoading
-                ) {
-                    performRegistration()
-                }
-                
-                // Switch to Login
-                Button(action: {
-                    dismiss()
-                }) {
-                    HStack {
-                        Text("ALREADY HAVE AN ACCOUNT?")
-                            .font(PACETypography.caption())
-                            .foregroundColor(PACEColor.textSecondary)
-                        Text("LOGIN")
-                            .font(PACETypography.caption())
-                            .foregroundColor(PACEColor.accent)
+                // Actions
+                VStack(spacing: 12) {
+                    PACEButton(
+                        title: "CREATE ACCOUNT →",
+                        variant: .primary
+                    ) {
+                        performRegistration()
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 8)
+                    
+                    PACEButton(
+                        title: "ALREADY HAVE AN ACCOUNT? LOG IN →",
+                        variant: .secondary
+                    ) {
+                        dismiss()
+                    }
                 }
-                .buttonStyle(.plain)
+                .padding(.top, 12)
                 
                 Spacer(minLength: 30)
             }
             .padding(.horizontal, 24)
         }
-        .background(PACEColor.background.ignoresSafeArea())
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(PACEColor.background, for: .navigationBar)
-        .toolbarColorScheme(.dark, for: .navigationBar)
+        .background(PACETheme.background.ignoresSafeArea())
+        .navigationBarBackButtonHidden(true)
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button(action: { dismiss() }) {
+                    HStack(spacing: 4) {
+                        Text("← BACK")
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .foregroundColor(PACETheme.secondaryText)
+                            .tracking(1.0)
+                    }
+                }
+                .buttonStyle(.plain)
+            }
+        }
     }
     
     private func performRegistration() {

@@ -2,10 +2,11 @@
 //  PACETextField.swift
 //  PACE
 //
-//  Reusable sharp rectangular text field primitive adhering to PACE UI rules:
+//  Reusable sharp rectangular text field primitive adhering to PACE Figma design rules:
 //  - Corner radius 0 (strictly rectangular)
-//  - Sharp 1px neutral/accent border
-//  - System sans-serif typography
+//  - Black background with 1px dark-gray border (accent border on focus)
+//  - Monospaced tracked label above
+//  - Monospaced input font
 //
 
 import SwiftUI
@@ -18,12 +19,12 @@ struct PACETextField: View {
     @FocusState private var isFocused: Bool
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             if let label = label {
                 Text(label.uppercased())
-                    .font(PACETypography.caption())
-                    .foregroundColor(PACEColor.textSecondary)
-                    .tracking(1.0)
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundColor(PACETheme.secondaryText)
+                    .tracking(1.5)
             }
             
             HStack(spacing: 8) {
@@ -31,28 +32,32 @@ struct PACETextField: View {
                     SecureField(
                         "",
                         text: $text,
-                        prompt: Text(placeholder).foregroundColor(PACEColor.textSecondary)
+                        prompt: Text(placeholder.uppercased())
+                            .font(.system(size: 12, weight: .medium, design: .monospaced))
+                            .foregroundColor(PACETheme.mutedText)
                     )
                     .focused($isFocused)
-                    .font(PACETypography.body())
-                    .foregroundColor(PACEColor.textPrimary)
+                    .font(.system(size: 14, weight: .regular, design: .monospaced))
+                    .foregroundColor(PACETheme.primaryText)
                 } else {
                     TextField(
                         "",
                         text: $text,
-                        prompt: Text(placeholder).foregroundColor(PACEColor.textSecondary)
+                        prompt: Text(placeholder.uppercased())
+                            .font(.system(size: 12, weight: .medium, design: .monospaced))
+                            .foregroundColor(PACETheme.mutedText)
                     )
                     .focused($isFocused)
-                    .font(PACETypography.body())
-                    .foregroundColor(PACEColor.textPrimary)
+                    .font(.system(size: 14, weight: .regular, design: .monospaced))
+                    .foregroundColor(PACETheme.primaryText)
                 }
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .background(PACEColor.surface)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .background(Color.black)
             .overlay(
                 Rectangle()
-                    .stroke(isFocused ? PACEColor.accent : PACEColor.border, lineWidth: 1)
+                    .stroke(isFocused ? PACETheme.accent : PACETheme.border, lineWidth: 1)
             )
         }
     }

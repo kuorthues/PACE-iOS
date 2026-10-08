@@ -2,10 +2,12 @@
 //  PACEButton.swift
 //  PACE
 //
-//  Reusable sharp rectangular button primitive adhering to PACE UI rules:
+//  Reusable sharp rectangular button primitive adhering to PACE Figma design rules:
 //  - Corner radius 0 (strictly rectangular)
-//  - #A7FF19 accent for primary actions
-//  - System sans-serif typography
+//  - Full-width rectangular geometry
+//  - Primary: #A7FF19 background, black monospaced uppercase text
+//  - Secondary: transparent / black background, thin dark-gray border, white/gray text
+//  - Generous vertical padding with arrow indicator where appropriate
 //
 
 import SwiftUI
@@ -19,6 +21,7 @@ enum PACEButtonVariant {
 struct PACEButton: View {
     let title: String
     var icon: String? = nil
+    var showArrow: Bool = false
     var variant: PACEButtonVariant = .primary
     var isFullWidth: Bool = true
     var isEnabled: Bool = true
@@ -33,14 +36,20 @@ struct PACEButton: View {
             HStack(spacing: 8) {
                 if let icon = icon {
                     Image(systemName: icon)
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.system(size: 13, weight: .bold))
                 }
                 
-                Text(title)
-                    .font(.system(size: 14, weight: .bold))
+                Text(title.uppercased())
+                    .font(.system(size: 12, weight: .bold, design: .monospaced))
+                    .tracking(1.5)
+                
+                if showArrow || (!title.contains("→") && (variant == .primary || variant == .secondary)) {
+                    Text("→")
+                        .font(.system(size: 13, weight: .bold, design: .monospaced))
+                }
             }
             .frame(maxWidth: isFullWidth ? .infinity : nil)
-            .padding(.vertical, 14)
+            .padding(.vertical, 16)
             .padding(.horizontal, 20)
             .background(backgroundColor)
             .foregroundColor(foregroundColor)
@@ -57,9 +66,9 @@ struct PACEButton: View {
     private var backgroundColor: Color {
         switch variant {
         case .primary:
-            return PACEColor.accent
+            return PACETheme.accent
         case .secondary:
-            return PACEColor.surfaceElevated
+            return Color.black
         case .outline:
             return Color.black
         }
@@ -68,22 +77,22 @@ struct PACEButton: View {
     private var foregroundColor: Color {
         switch variant {
         case .primary:
-            return PACEColor.textOnAccent
+            return Color.black
         case .secondary:
-            return PACEColor.textPrimary
+            return Color.white
         case .outline:
-            return PACEColor.accent
+            return PACETheme.accent
         }
     }
     
     private var borderColor: Color {
         switch variant {
         case .primary:
-            return PACEColor.accent
+            return PACETheme.accent
         case .secondary:
-            return PACEColor.border
+            return PACETheme.border
         case .outline:
-            return PACEColor.accent
+            return PACETheme.accent
         }
     }
 }

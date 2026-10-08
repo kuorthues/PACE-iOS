@@ -2,10 +2,12 @@
 //  LoginView.swift
 //  PACE
 //
-//  Login screen with email/password authentication and zero-radius controls:
-//  - Email, Password inputs
-//  - Validation and error presentation
-//  - Navigation to Forgot Password
+//  Login screen matching Figma prototype styling:
+//  - P A C E tracked header
+//  - Condensed bold display typography: LOG IN
+//  - Sharp bordered fields: EMAIL, PASSWORD
+//  - Primary CTA: LOG IN →
+//  - Secondary: DON'T HAVE AN ACCOUNT? REGISTER →
 //
 
 import SwiftUI
@@ -22,114 +24,104 @@ struct LoginView: View {
     
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                // Header
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("LOGIN")
-                        .font(PACETypography.titleLarge())
-                        .foregroundColor(PACEColor.textPrimary)
+            VStack(alignment: .leading, spacing: 28) {
+                // Header Block
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("P A C E")
+                        .font(.system(size: 11, weight: .black, design: .monospaced))
+                        .foregroundColor(PACETheme.accent)
+                        .tracking(3.0)
+                        .padding(.top, 8)
                     
-                    Text("Sign in to access your targets and daily logs.")
-                        .font(PACETypography.body())
-                        .foregroundColor(PACEColor.textSecondary)
+                    Text("LOG IN")
+                        .font(PACETextStyle.displayLarge)
+                        .foregroundColor(PACETheme.primaryText)
                 }
-                .padding(.top, 10)
-                
-                PACEDivider()
                 
                 // Error Banner
                 if let errorText = localError ?? authService.errorMessage {
                     HStack(alignment: .top, spacing: 10) {
-                        Image(systemName: "exclamationmark.square.fill")
-                            .foregroundColor(PACEColor.accent)
+                        Rectangle()
+                            .fill(PACETheme.accent)
+                            .frame(width: 3)
                         Text(errorText)
                             .font(PACETypography.body())
-                            .foregroundColor(PACEColor.textPrimary)
+                            .foregroundColor(PACETheme.primaryText)
                     }
                     .padding(12)
-                    .paceCard(borderColor: PACEColor.accent)
+                    .background(PACETheme.surface)
+                    .overlay(
+                        Rectangle().stroke(PACETheme.border, lineWidth: 1)
+                    )
                 }
                 
                 // Form Fields
-                VStack(spacing: 16) {
+                VStack(spacing: 20) {
                     PACETextField(
-                        placeholder: "name@example.com (optional)",
+                        placeholder: "NAME@EXAMPLE.COM",
                         text: $email,
-                        label: "Email Address"
+                        label: "EMAIL"
                     )
                     .textInputAutocapitalization(.never)
                     .keyboardType(.emailAddress)
                     .autocorrectionDisabled(true)
                     
                     PACETextField(
-                        placeholder: "Enter password (optional)",
+                        placeholder: "YOUR PASSWORD",
                         text: $password,
-                        label: "Password",
+                        label: "PASSWORD",
                         isSecure: true
                     )
                     
-                    // Direct access hint when in local mode
-                    if !authService.isFirebaseConfigured {
-                        HStack(spacing: 6) {
-                            Image(systemName: "bolt.fill")
-                                .foregroundColor(PACEColor.accent)
-                            Text("FAST ACCESS: Tap LOGIN to enter without credentials.")
-                                .font(PACETypography.caption())
-                                .foregroundColor(PACEColor.accent)
-                        }
-                    }
-                    
-                    // Forgot Password link
                     HStack {
                         Spacer()
                         Button(action: {
                             navigateToForgotPassword = true
                         }) {
                             Text("FORGOT PASSWORD?")
-                                .font(PACETypography.caption())
-                                .foregroundColor(PACEColor.accent)
+                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                .foregroundColor(PACETheme.secondaryText)
+                                .tracking(1.0)
                         }
                         .buttonStyle(.plain)
                     }
                 }
                 
-                PACEDivider()
-                
-                // Submit Button
-                PACEButton(
-                    title: authService.isLoading ? "LOGGING IN..." : "LOGIN",
-                    icon: authService.isLoading ? nil : "arrow.right.square",
-                    variant: .primary,
-                    isEnabled: !authService.isLoading
-                ) {
-                    performLogin()
-                }
-                
-                // Switch to Register
-                Button(action: {
-                    navigateToRegister = true
-                }) {
-                    HStack {
-                        Text("NEED AN ACCOUNT?")
-                            .font(PACETypography.caption())
-                            .foregroundColor(PACEColor.textSecondary)
-                        Text("CREATE ONE")
-                            .font(PACETypography.caption())
-                            .foregroundColor(PACEColor.accent)
+                // Actions
+                VStack(spacing: 12) {
+                    PACEButton(
+                        title: "LOG IN →",
+                        variant: .primary
+                    ) {
+                        performLogin()
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 8)
+                    
+                    PACEButton(
+                        title: "CREATE NEW ACCOUNT →",
+                        variant: .secondary
+                    ) {
+                        navigateToRegister = true
+                    }
                 }
-                .buttonStyle(.plain)
+                .padding(.top, 12)
                 
                 Spacer(minLength: 30)
             }
             .padding(.horizontal, 24)
         }
-        .background(PACEColor.background.ignoresSafeArea())
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(PACEColor.background, for: .navigationBar)
-        .toolbarColorScheme(.dark, for: .navigationBar)
+        .background(PACETheme.background.ignoresSafeArea())
+        .navigationBarBackButtonHidden(true)
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button(action: { dismiss() }) {
+                    Text("← BACK")
+                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                        .foregroundColor(PACETheme.secondaryText)
+                        .tracking(1.0)
+                }
+                .buttonStyle(.plain)
+            }
+        }
         .navigationDestination(isPresented: $navigateToForgotPassword) {
             ForgotPasswordView()
         }
@@ -144,9 +136,7 @@ struct LoginView: View {
         
         let trimmedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
         
-        // If email or password is empty, or if Firebase is not configured,
-        // sign in directly without requiring credentials!
-        if trimmedEmail.isEmpty || password.isEmpty || !authService.isFirebaseConfigured {
+        if (trimmedEmail.isEmpty && password.isEmpty) || !authService.isFirebaseConfigured {
             authService.signInQuick(
                 email: trimmedEmail.isEmpty ? "student@pace.edu" : trimmedEmail,
                 displayName: "PACE Student"
@@ -154,8 +144,18 @@ struct LoginView: View {
             return
         }
         
+        if trimmedEmail.isEmpty {
+            localError = "Please enter your email."
+            return
+        }
+        
         if !authService.validateEmail(trimmedEmail) {
-            localError = "Please enter a valid email address."
+            localError = "Please enter a valid email format."
+            return
+        }
+        
+        if password.isEmpty {
+            localError = "Please enter your password."
             return
         }
         

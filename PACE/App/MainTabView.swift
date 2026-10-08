@@ -108,7 +108,7 @@ struct MainTabView: View {
         VStack(spacing: 0) {
             // Sharp 1px top border
             Rectangle()
-                .fill(PACEColor.border)
+                .fill(PACETheme.border)
                 .frame(height: 1)
             
             HStack(spacing: 0) {
@@ -116,31 +116,26 @@ struct MainTabView: View {
                     Button(action: {
                         selectedTab = tab
                     }) {
-                        VStack(spacing: 5) {
-                            Image(systemName: tab.iconName)
-                                .font(.system(size: 18, weight: selectedTab == tab ? .bold : .regular))
-                            
+                        VStack(spacing: 6) {
                             Text(tab.rawValue.uppercased())
-                                .font(.system(size: 10, weight: selectedTab == tab ? .bold : .medium))
-                                .tracking(0.8)
+                                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                .tracking(1.5)
+                                .foregroundColor(selectedTab == tab ? PACETheme.accent : PACETheme.secondaryText)
+                            
+                            // Thin #A7FF19 underline directly beneath selected tab text
+                            Rectangle()
+                                .fill(selectedTab == tab ? PACETheme.accent : Color.clear)
+                                .frame(width: 28, height: 2)
                         }
-                        .foregroundColor(selectedTab == tab ? PACEColor.accent : PACEColor.textSecondary)
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
-                        .background(PACEColor.background)
-                        .overlay(alignment: .top) {
-                            if selectedTab == tab {
-                                Rectangle()
-                                    .fill(PACEColor.accent)
-                                    .frame(height: 2)
-                            }
-                        }
+                        .padding(.top, 14)
+                        .padding(.bottom, 10)
                     }
                     .buttonStyle(.plain)
                 }
             }
-            .background(PACEColor.background)
+            .background(PACETheme.background)
         }
-        .background(PACEColor.background.ignoresSafeArea(edges: .bottom))
+        .background(PACETheme.background.ignoresSafeArea(edges: .bottom))
     }
 }
