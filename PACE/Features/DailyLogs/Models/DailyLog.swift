@@ -5,9 +5,11 @@
 //  Domain model for daily goal progress entries.
 //  Enforces one normal log per goal/calendar day.
 //
-
 import Foundation
 
+#if canImport(FirebaseFirestore)
+import FirebaseFirestore
+#endif
 struct DailyLog: Identifiable, Codable, Equatable {
     let id: String // Unique ID, typically \(dateString) or \(goalId)_\(dateString)
     let goalId: String
@@ -76,15 +78,25 @@ struct DailyLog: Identifiable, Codable, Equatable {
     // MARK: - Dictionary Representation for Firestore
     
     var dictionary: [String: Any] {
+        #if canImport(FirebaseFirestore)
+        let dateVal: Any = Timestamp(date: date)
+        let createdVal: Any = Timestamp(date: createdAt)
+        let updatedVal: Any = Timestamp(date: updatedAt)
+        #else
+        let dateVal: Any = date.timeIntervalSince1970
+        let createdVal: Any = createdAt.timeIntervalSince1970
+        let updatedVal: Any = updatedAt.timeIntervalSince1970
+        #endif
+        
         var dict: [String: Any] = [
             "id": id,
             "goalId": goalId,
-            "date": date.timeIntervalSince1970,
+            "date": dateVal,
             "dateString": dateString,
             "selectedActivities": selectedActivities,
             "durationMinutes": durationMinutes,
-            "createdAt": createdAt.timeIntervalSince1970,
-            "updatedAt": updatedAt.timeIntervalSince1970
+            "createdAt": createdVal,
+            "updatedAt": updatedVal
         ]
         if let note = note {
             dict["note"] = note
@@ -107,7 +119,10 @@ struct DailyLog: Identifiable, Codable, Equatable {
         self.goalId = goalId
         self.dateString = dateString
         
-        if let dateTime = dictionary["date"] as? TimeInterval {
+        #if canImport(FirebaseFirestore)
+        if let ts = dictionary["date"] as? Timestamp {
+            self.date = ts.dateValue()
+        } else if let dateTime = dictionary["date"] as? TimeInterval {
             self.date = Date(timeIntervalSince1970: dateTime)
         } else if let parsedDate = DailyLog.dateFormatter.date(from: dateString) {
             self.date = parsedDate
@@ -115,10 +130,29 @@ struct DailyLog: Identifiable, Codable, Equatable {
             self.date = Date()
         }
         
-        self.selectedActivities = selectedActivities
-        self.durationMinutes = durationMinutes
-        self.note = dictionary["note"] as? String
-        self.evidenceId = dictionary["evidenceId"] as? String
+        if let ts = dictionary["createdAt"] as? Timestamp {
+            self.createdAt = ts.dateValue()
+        } else if let createdTime = dictionary["createdAt"] as? TimeInterval {
+            self.createdAt = Date(timeIntervalSince1970: createdTime)
+        } else {
+            self.createdAt = Date()
+        }
+        
+        if let ts = dictionary["updatedAt"] as? Timestamp {
+            self.updatedAt = ts.dateValue()
+        } else if let updatedTime = dictionary["updatedAt"] as? TimeInterval {
+            self.updatedAt = Date(timeIntervalSince1970: updatedTime)
+        } else {
+            self.updatedAt = Date()
+        }
+        #else
+        if let dateTime = dictionary["date"] as? TimeInterval {
+            self.date = Date(timeIntervalSince1970: dateTime)
+        } else if let parsedDate = DailyLog.dateFormatter.date(from: dateString) {
+            self.date = parsedDate
+        } else {
+            self.date = Date()
+        }
         
         if let createdTime = dictionary["createdAt"] as? TimeInterval {
             self.createdAt = Date(timeIntervalSince1970: createdTime)
@@ -131,5 +165,11 @@ struct DailyLog: Identifiable, Codable, Equatable {
         } else {
             self.updatedAt = Date()
         }
+        #endif
+        
+        self.selectedActivities = selectedActivities
+        self.durationMinutes = durationMinutes
+        self.note = dictionary["note"] as? String
+        self.evidenceId = dictionary["evidenceId"] as? String
     }
 }

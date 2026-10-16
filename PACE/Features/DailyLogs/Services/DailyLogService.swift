@@ -14,10 +14,13 @@ import Combine
 import FirebaseCore
 #endif
 
+#if canImport(FirebaseAuth)
+import FirebaseAuth
+#endif
+
 #if canImport(FirebaseFirestore)
 import FirebaseFirestore
 #endif
-
 @MainActor
 final class DailyLogService: ObservableObject {
     static let shared = DailyLogService()
@@ -27,30 +30,46 @@ final class DailyLogService: ObservableObject {
     @Published var errorMessage: String? = nil
     
     private init() {}
-    
-    private func activeUserId() -> String {
-        AuthService.shared.currentUser?.id ?? "local_user"
+    private func authoritativeUserId() -> String? {
+        #if canImport(FirebaseAuth)
+        if let authUid = Auth.auth().currentUser?.uid {
+            return authUid
+        }
+        #endif
+        return AuthService.shared.currentUser?.id
     }
     
-    private func localKey(for goalId: String) -> String {
-        "pace_logs_\(activeUserId())_\(goalId)"
+    private func localKey(for goalId: String, uid: String) -> String {
+        "pace_logs_\(uid)_\(goalId)"
     }
     
     // MARK: - Local Persistence
     
-    private func loadLocalLogs(for goalId: String) -> [DailyLog] {
-        guard let data = UserDefaults.standard.data(forKey: localKey(for: goalId)),
+    private func loadLocalLogs(for goalId: String, uid: String) -> [DailyLog] {
+        guard let data = UserDefaults.standard.data(forKey: localKey(for: goalId, uid: uid)),
               let decoded = try? JSONDecoder().decode([DailyLog].self, from: data) else {
             return []
         }
         return decoded.sorted(by: { $0.date > $1.date })
     }
     
-    private func saveLocalLogs(_ logs: [DailyLog], for goalId: String) {
+    private func saveLocalLogs(_ logs: [DailyLog], for goalId: String, uid: String) {
         if let encoded = try? JSONEncoder().encode(logs) {
-            UserDefaults.standard.set(encoded, forKey: localKey(for: goalId))
+            UserDefaults.standard.set(encoded, forKey: localKey(for: goalId, uid: uid))
         }
         self.logsByGoal[goalId] = logs.sorted(by: { $0.date > $1.date })
+    }
+    
+    func clearInMemoryCache() {
+        self.logsByGoal = [:]
+        self.errorMessage = nil
+    }
+    
+    private func syncWidget() {
+        PACEWidgetSyncService.shared.syncPrimaryGoal(
+            goals: GoalService.shared.goals,
+            logsByGoal: self.logsByGoal
+        )
     }
     
     // MARK: - Fetch Logs
@@ -60,7 +79,10 @@ final class DailyLogService: ObservableObject {
         errorMessage = nil
         defer { isLoading = false }
         
-        let uid = activeUserId()
+        guard let uid = authoritativeUserId() else {
+            self.logsByGoal[goalId] = []
+            return []
+        }
         
         #if canImport(FirebaseFirestore)
         if AuthService.shared.isFirebaseConfigured {
@@ -77,7 +99,8 @@ final class DailyLogService: ObservableObject {
                     DailyLog(id: doc.documentID, dictionary: doc.data())
                 }.sorted(by: { $0.date > $1.date })
                 
-                saveLocalLogs(fetchedLogs, for: goalId)
+                saveLocalLogs(fetchedLogs, for: goalId, uid: uid)
+                syncWidget()
                 return fetchedLogs
             } catch {
                 self.errorMessage = "Failed to sync logs with Firestore: \(error.localizedDescription)"
@@ -85,14 +108,15 @@ final class DailyLogService: ObservableObject {
         }
         #endif
         
-        let local = loadLocalLogs(for: goalId)
+        let local = loadLocalLogs(for: goalId, uid: uid)
         self.logsByGoal[goalId] = local
+        syncWidget()
         return local
     }
-    
     func fetchLog(for goalId: String, date: Date) -> DailyLog? {
         let dateString = DailyLog.dateFormatter.string(from: Calendar.current.startOfDay(for: date))
-        let currentLogs = logsByGoal[goalId] ?? loadLocalLogs(for: goalId)
+        guard let uid = authoritativeUserId() else { return nil }
+        let currentLogs = logsByGoal[goalId] ?? loadLocalLogs(for: goalId, uid: uid)
         return currentLogs.first { $0.dateString == dateString }
     }
     
@@ -107,27 +131,36 @@ final class DailyLogService: ObservableObject {
         evidenceId: String? = nil
     ) async throws -> DailyLog {
         errorMessage = nil
-        let uid = activeUserId()
+        guard let uid = authoritativeUserId() else {
+            let error = AuthError.validation("You must be logged in to save a daily log.")
+            self.errorMessage = error.localizedDescription
+            throw error
+        }
         
         guard !selectedActivities.isEmpty else {
-            throw AuthError.validation("Please select at least one activity.")
+            let error = AuthError.validation("Please select at least one activity.")
+            self.errorMessage = error.localizedDescription
+            throw error
         }
         
         guard durationMinutes > 0 else {
-            throw AuthError.validation("Duration must be at least 1 minute.")
+            let error = AuthError.validation("Duration must be at least 1 minute.")
+            self.errorMessage = error.localizedDescription
+            throw error
         }
-        
         let calendar = Calendar.current
         let startOfDay = calendar.startOfDay(for: date)
         
         // Prevent logging in the future
         guard startOfDay <= calendar.startOfDay(for: Date()) else {
-            throw AuthError.validation("Cannot log entries for future dates.")
+            let error = AuthError.validation("Cannot log entries for future dates.")
+            self.errorMessage = error.localizedDescription
+            throw error
         }
         
         let dateString = DailyLog.dateFormatter.string(from: startOfDay)
         
-        var currentLogs = loadLocalLogs(for: goalId)
+        var currentLogs = loadLocalLogs(for: goalId, uid: uid)
         var existingIndex: Int? = nil
         for (i, log) in currentLogs.enumerated() {
             if log.dateString == dateString {
@@ -179,18 +212,23 @@ final class DailyLogService: ObservableObject {
                     .setData(logToSave.dictionary, merge: true)
             } catch {
                 self.errorMessage = "Failed to write log to Firestore: \(error.localizedDescription)"
+                throw error
             }
         }
         #endif
         
-        saveLocalLogs(currentLogs, for: goalId)
+        saveLocalLogs(currentLogs, for: goalId, uid: uid)
+        syncWidget()
         return logToSave
     }
-    
     // MARK: - Delete Log
     
     func deleteLog(id: String, goalId: String) async throws {
-        let uid = activeUserId()
+        guard let uid = authoritativeUserId() else {
+            let error = AuthError.validation("You must be logged in to delete a daily log.")
+            self.errorMessage = error.localizedDescription
+            throw error
+        }
         
         #if canImport(FirebaseFirestore)
         if AuthService.shared.isFirebaseConfigured {
@@ -205,15 +243,17 @@ final class DailyLogService: ObservableObject {
                     .delete()
             } catch {
                 self.errorMessage = "Failed to delete log from Firestore: \(error.localizedDescription)"
+                throw error
             }
         }
         #endif
         
-        var currentLogs = loadLocalLogs(for: goalId)
+        var currentLogs = loadLocalLogs(for: goalId, uid: uid)
         currentLogs.removeAll(where: { $0.id == id || $0.dateString == id })
-        saveLocalLogs(currentLogs, for: goalId)
+        saveLocalLogs(currentLogs, for: goalId, uid: uid)
         
         // Clean up associated evidence
         await EvidenceService.shared.clearEvidence(for: goalId, logId: id)
+        syncWidget()
     }
 }

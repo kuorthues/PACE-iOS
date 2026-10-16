@@ -125,7 +125,13 @@ struct DailyLoggingTestSuite {
         // ---------------------------------------------------------------
         let service = DailyLogService.shared
         let testGoalId = "test_crud_goal_\(UUID().uuidString.prefix(6))"
-        
+        let previousAuthUser = AuthService.shared.currentUser
+        if AuthService.shared.currentUser == nil {
+            AuthService.shared.currentUser = PACEUser(id: "test_daily_log_user", email: "test@pace.local")
+        }
+        defer {
+            AuthService.shared.currentUser = previousAuthUser
+        }
         do {
             // A. Create initial log for today
             let log1 = try await service.saveLog(

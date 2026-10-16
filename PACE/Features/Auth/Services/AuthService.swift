@@ -308,10 +308,12 @@ final class AuthService: ObservableObject {
         self.currentUser = nil
         self.isAuthenticated = false
         GoalService.shared.clearInMemoryCache()
+        DailyLogService.shared.clearInMemoryCache()
     }
     
     // MARK: - Firestore User Profile Persistence
     
+    #if canImport(FirebaseAuth)
     private func createFirestoreProfile(for user: User, displayName: String?) async {
         #if canImport(FirebaseFirestore)
         guard isFirebaseConfigured else { return }
@@ -370,7 +372,7 @@ final class AuthService: ObservableObject {
         }
         #endif
     }
-    // MARK: - Helper Error Mapping
+    #endif
     
     private func mapFirebaseError(_ error: Error) -> String {
         let nsError = error as NSError
