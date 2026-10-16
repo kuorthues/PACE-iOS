@@ -50,11 +50,15 @@ final class AuthService: ObservableObject {
     @Published var hasGoogleServicePlist: Bool = false
     @Published var isFirebaseConfigured: Bool = false
     
+    #if canImport(FirebaseAuth)
+    private var authStateHandle: AuthStateDidChangeListenerHandle?
+    #endif
+    
     private var cancellables = Set<AnyCancellable>()
     
     init() {
         checkConfiguration()
-        loadPersistedSession()
+        UserDefaults.standard.removeObject(forKey: "pace_active_user")
         setupAuthStateListener()
     }
     
@@ -79,8 +83,18 @@ final class AuthService: ObservableObject {
     
     private func setupAuthStateListener() {
         #if canImport(FirebaseAuth)
+        checkConfiguration()
         if isFirebaseConfigured {
-            Auth.auth().addStateDidChangeListener { [weak self] _, user in
+            if let user = Auth.auth().currentUser {
+                self.currentUser = PACEUser(
+                    id: user.uid,
+                    email: user.email ?? "",
+                    displayName: user.displayName
+                )
+                self.isAuthenticated = true
+            }
+            
+            authStateHandle = Auth.auth().addStateDidChangeListener { [weak self] _, user in
                 Task { @MainActor [weak self] in
                     guard let self = self else { return }
                     if let user = user {
@@ -107,43 +121,6 @@ final class AuthService: ObservableObject {
         let pattern = "^[A-Z0-9a-z._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,64}$"
         return trimmed.range(of: pattern, options: .regularExpression) != nil
     }
-    
-    // MARK: - Quick / Development Sign-In
-    
-    func signInQuick(email: String? = nil, displayName: String? = nil) {
-        errorMessage = nil
-        statusMessage = nil
-        
-        let trimmedEmail = email?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let resolvedEmail = trimmedEmail.isEmpty ? "student@pace.edu" : trimmedEmail
-        
-        let trimmedName = displayName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let resolvedName = trimmedName.isEmpty ? "PACE Student" : trimmedName
-        
-        let user = PACEUser(
-            id: "student_user",
-            email: resolvedEmail,
-            displayName: resolvedName
-        )
-        self.currentUser = user
-        self.isAuthenticated = true
-        savePersistedSession(user)
-    }
-    
-    private func savePersistedSession(_ user: PACEUser) {
-        if let data = try? JSONEncoder().encode(user) {
-            UserDefaults.standard.set(data, forKey: "pace_active_user")
-        }
-    }
-    
-    private func loadPersistedSession() {
-        if let data = UserDefaults.standard.data(forKey: "pace_active_user"),
-           let user = try? JSONDecoder().decode(PACEUser.self, from: data) {
-            self.currentUser = user
-            self.isAuthenticated = true
-        }
-    }
-    
     // MARK: - Registration
     
     func createAccount(name: String, email: String, password: String, confirmPassword: String) async throws {
@@ -184,12 +161,11 @@ final class AuthService: ObservableObject {
             throw error
         }
         
-        // If Firebase is not configured, fall back to quick sign-in
-        guard isFirebaseLinked && hasGoogleServicePlist else {
-            signInQuick(email: trimmedEmail, displayName: trimmedName)
-            return
+        guard isFirebaseConfigured else {
+            let error = AuthError.firebaseNotConfigured("Firebase Authentication is not configured.")
+            self.errorMessage = error.localizedDescription
+            throw error
         }
-        
         #if canImport(FirebaseAuth)
         isLoading = true
         defer { isLoading = false }
@@ -240,12 +216,11 @@ final class AuthService: ObservableObject {
             throw error
         }
         
-        // If Firebase is not configured, fall back to quick sign-in
-        guard isFirebaseLinked && hasGoogleServicePlist else {
-            signInQuick(email: trimmedEmail, displayName: "PACE Student")
-            return
+        guard isFirebaseConfigured else {
+            let error = AuthError.firebaseNotConfigured("Firebase Authentication is not configured.")
+            self.errorMessage = error.localizedDescription
+            throw error
         }
-        
         #if canImport(FirebaseAuth)
         isLoading = true
         defer { isLoading = false }
@@ -286,18 +261,11 @@ final class AuthService: ObservableObject {
             throw error
         }
         
-        guard isFirebaseLinked else {
-            let error = AuthError.firebaseNotConfigured("Firebase Authentication SDK is not linked. Add firebase-ios-sdk and GoogleService-Info.plist for mseud.edu.ph.PACE.")
+        guard isFirebaseConfigured else {
+            let error = AuthError.firebaseNotConfigured("Firebase Authentication is not configured.")
             self.errorMessage = error.localizedDescription
             throw error
         }
-        
-        guard hasGoogleServicePlist else {
-            let error = AuthError.firebaseNotConfigured("GoogleService-Info.plist is missing. Add the configuration file to send password reset emails.")
-            self.errorMessage = error.localizedDescription
-            throw error
-        }
-        
         #if canImport(FirebaseAuth)
         isLoading = true
         defer { isLoading = false }
@@ -334,17 +302,47 @@ final class AuthService: ObservableObject {
     
     private func mapFirebaseError(_ error: Error) -> String {
         let nsError = error as NSError
-        // Handle common AuthErrorCode descriptions
+        
+        #if canImport(FirebaseAuth)
+        if let authErrorCode = AuthErrorCode(rawValue: nsError.code) {
+            switch authErrorCode {
+            case .invalidEmail:
+                return "Please enter a valid email address."
+            case .wrongPassword, .invalidCredential:
+                return "Incorrect email or password. Please try again."
+            case .userNotFound:
+                return "No account found with this email address."
+            case .userDisabled:
+                return "This account has been disabled."
+            case .emailAlreadyInUse:
+                return "An account with this email already exists."
+            case .weakPassword:
+                return "Password is too weak. Please use at least 6 characters."
+            case .networkError:
+                return "Network request failed. Check your internet connection."
+            case .tooManyRequests:
+                return "Too many attempts. Please try again later."
+            case .operationNotAllowed:
+                return "Email/Password sign-in is not enabled in Firebase Console."
+            default:
+                break
+            }
+        }
+        #endif
+        
         let description = error.localizedDescription
-        if description.contains("email address is badly formatted") || nsError.code == 17008 {
-            return "The email address is badly formatted."
-        } else if description.contains("no user record") || nsError.code == 17011 {
+        let lower = description.lowercased()
+        if lower.contains("email address is badly formatted") || nsError.code == 17008 {
+            return "Please enter a valid email address."
+        } else if lower.contains("no user record") || nsError.code == 17011 {
             return "No account found with this email address."
-        } else if description.contains("password is invalid") || description.contains("wrong password") || nsError.code == 17009 {
-            return "Incorrect password. Please try again."
-        } else if description.contains("already in use") || nsError.code == 17007 {
+        } else if lower.contains("password is invalid") || lower.contains("wrong password") || lower.contains("invalid-credential") || nsError.code == 17009 || nsError.code == 17999 {
+            return "Incorrect email or password. Please try again."
+        } else if lower.contains("already in use") || nsError.code == 17007 {
             return "An account with this email already exists."
-        } else if description.contains("network error") || description.contains("network-request-failed") || nsError.code == 17020 {
+        } else if lower.contains("weak password") || nsError.code == 17026 {
+            return "Password is too weak. Please use at least 6 characters."
+        } else if lower.contains("network") || nsError.code == 17020 {
             return "Network request failed. Check your internet connection."
         }
         return description

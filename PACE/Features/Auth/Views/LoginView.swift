@@ -90,15 +90,17 @@ struct LoginView: View {
                 // Actions
                 VStack(spacing: 12) {
                     PACEButton(
-                        title: "LOG IN →",
-                        variant: .primary
+                        title: authService.isLoading ? "LOGGING IN..." : "LOG IN →",
+                        variant: .primary,
+                        isEnabled: !authService.isLoading
                     ) {
                         performLogin()
                     }
                     
                     PACEButton(
                         title: "CREATE NEW ACCOUNT →",
-                        variant: .secondary
+                        variant: .secondary,
+                        isEnabled: !authService.isLoading
                     ) {
                         navigateToRegister = true
                     }
@@ -135,14 +137,6 @@ struct LoginView: View {
         authService.errorMessage = nil
         
         let trimmedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
-        
-        if (trimmedEmail.isEmpty && password.isEmpty) || !authService.isFirebaseConfigured {
-            authService.signInQuick(
-                email: trimmedEmail.isEmpty ? "student@pace.edu" : trimmedEmail,
-                displayName: "PACE Student"
-            )
-            return
-        }
         
         if trimmedEmail.isEmpty {
             localError = "Please enter your email."

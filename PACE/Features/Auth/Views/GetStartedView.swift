@@ -47,21 +47,6 @@ struct GetStartedView: View {
                 
                 Spacer(minLength: 40)
                 
-                // Dev/Test Notice if bypass active
-                if !authService.hasGoogleServicePlist || !authService.isFirebaseLinked {
-                    HStack(spacing: 8) {
-                        Image(systemName: "bolt.fill")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundColor(PACETheme.accent)
-                        Text("LOCAL BYPASS READY — TAP BELOW TO ENTER")
-                            .font(.system(size: 9, weight: .bold, design: .monospaced))
-                            .foregroundColor(PACETheme.accent)
-                            .tracking(1.0)
-                    }
-                    .padding(.horizontal, 24)
-                    .padding(.bottom, 16)
-                }
-                
                 // Action Buttons
                 VStack(spacing: 12) {
                     PACEButton(
@@ -75,11 +60,7 @@ struct GetStartedView: View {
                         title: "I ALREADY HAVE AN ACCOUNT →",
                         variant: .secondary
                     ) {
-                        if !authService.isFirebaseConfigured {
-                            authService.signInQuick()
-                        } else {
-                            navigateToLogin = true
-                        }
+                        navigateToLogin = true
                     }
                 }
                 .padding(.horizontal, 24)
