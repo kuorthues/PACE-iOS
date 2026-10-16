@@ -310,6 +310,7 @@ final class AuthService: ObservableObject {
         GoalService.shared.clearInMemoryCache()
         DailyLogService.shared.clearInMemoryCache()
         EvidenceService.shared.clearInMemoryCache()
+        PACEWidgetSyncService.shared.syncPrimaryGoal(goals: [], logsByGoal: [:])
     }
     
     // MARK: - Firestore User Profile Persistence
