@@ -18,6 +18,10 @@ import FirebaseCore
 import FirebaseAuth
 #endif
 
+#if canImport(FirebaseFirestore)
+import FirebaseFirestore
+#endif
+
 enum AuthError: LocalizedError, Equatable {
     case validation(String)
     case firebaseNotConfigured(String)
@@ -92,6 +96,9 @@ final class AuthService: ObservableObject {
                     displayName: user.displayName
                 )
                 self.isAuthenticated = true
+                Task {
+                    await self.syncFirestoreProfile(for: user)
+                }
             }
             
             authStateHandle = Auth.auth().addStateDidChangeListener { [weak self] _, user in
@@ -104,6 +111,7 @@ final class AuthService: ObservableObject {
                             displayName: user.displayName
                         )
                         self.isAuthenticated = true
+                        await self.syncFirestoreProfile(for: user)
                     } else {
                         self.currentUser = nil
                         self.isAuthenticated = false
@@ -182,6 +190,8 @@ final class AuthService: ObservableObject {
                 displayName: trimmedName
             )
             self.isAuthenticated = true
+            
+            await createFirestoreProfile(for: result.user, displayName: trimmedName)
         } catch {
             let mapped = mapFirebaseError(error)
             self.errorMessage = mapped
@@ -233,6 +243,8 @@ final class AuthService: ObservableObject {
                 displayName: result.user.displayName
             )
             self.isAuthenticated = true
+            
+            await syncFirestoreProfile(for: result.user)
         } catch {
             let mapped = mapFirebaseError(error)
             self.errorMessage = mapped
@@ -298,6 +310,66 @@ final class AuthService: ObservableObject {
         self.isAuthenticated = false
     }
     
+    // MARK: - Firestore User Profile Persistence
+    
+    private func createFirestoreProfile(for user: User, displayName: String?) async {
+        #if canImport(FirebaseFirestore)
+        guard isFirebaseConfigured else { return }
+        guard let currentAuthUser = Auth.auth().currentUser, currentAuthUser.uid == user.uid else { return }
+        
+        let docRef = Firestore.firestore().collection("users").document(currentAuthUser.uid)
+        var profileData: [String: Any] = [
+            "uid": currentAuthUser.uid,
+            "email": currentAuthUser.email ?? user.email ?? "",
+            "createdAt": FieldValue.serverTimestamp(),
+            "updatedAt": FieldValue.serverTimestamp()
+        ]
+        if let name = displayName ?? user.displayName, !name.isEmpty {
+            profileData["displayName"] = name
+        }
+        
+        do {
+            try await docRef.setData(profileData, merge: true)
+        } catch {
+            print("Warning: Failed to create Firestore user profile: \(error.localizedDescription)")
+        }
+        #endif
+    }
+    
+    private func syncFirestoreProfile(for user: User) async {
+        #if canImport(FirebaseFirestore)
+        guard isFirebaseConfigured else { return }
+        guard let currentAuthUser = Auth.auth().currentUser, currentAuthUser.uid == user.uid else { return }
+        
+        let docRef = Firestore.firestore().collection("users").document(currentAuthUser.uid)
+        
+        do {
+            let snapshot = try await docRef.getDocument()
+            if snapshot.exists {
+                var updateData: [String: Any] = [
+                    "updatedAt": FieldValue.serverTimestamp()
+                ]
+                if let name = user.displayName, !name.isEmpty, snapshot.data()?["displayName"] == nil {
+                    updateData["displayName"] = name
+                }
+                try await docRef.updateData(updateData)
+            } else {
+                var profileData: [String: Any] = [
+                    "uid": currentAuthUser.uid,
+                    "email": currentAuthUser.email ?? user.email ?? "",
+                    "createdAt": FieldValue.serverTimestamp(),
+                    "updatedAt": FieldValue.serverTimestamp()
+                ]
+                if let name = user.displayName, !name.isEmpty {
+                    profileData["displayName"] = name
+                }
+                try await docRef.setData(profileData, merge: true)
+            }
+        } catch {
+            print("Warning: Failed to sync Firestore user profile: \(error.localizedDescription)")
+        }
+        #endif
+    }
     // MARK: - Helper Error Mapping
     
     private func mapFirebaseError(_ error: Error) -> String {
