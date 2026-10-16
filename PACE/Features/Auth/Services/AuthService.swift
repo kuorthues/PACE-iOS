@@ -309,6 +309,7 @@ final class AuthService: ObservableObject {
         self.isAuthenticated = false
         GoalService.shared.clearInMemoryCache()
         DailyLogService.shared.clearInMemoryCache()
+        EvidenceService.shared.clearInMemoryCache()
     }
     
     // MARK: - Firestore User Profile Persistence

@@ -80,6 +80,13 @@ final class EvidenceTests {
         
         // 3. Test Save, Cache & Load Local Evidence
         let service = EvidenceService.shared
+        let previousAuthUser = AuthService.shared.currentUser
+        if AuthService.shared.currentUser == nil {
+            AuthService.shared.currentUser = PACEUser(id: testUserId, email: "tester@pace.local")
+        }
+        defer {
+            AuthService.shared.currentUser = previousAuthUser
+        }
         let sampleImage = createTestImage(size: CGSize(width: 800, height: 800), color: .green)
         
         do {

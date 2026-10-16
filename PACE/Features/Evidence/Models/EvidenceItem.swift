@@ -7,9 +7,11 @@
 //  - id, userId, goalId, logId, storagePath, optional caption, createdAt
 //  - Strictly excludes raw image bytes from metadata/Firestore
 //
-
 import Foundation
 
+#if canImport(FirebaseFirestore)
+import FirebaseFirestore
+#endif
 struct EvidenceItem: Identifiable, Codable, Equatable {
     let id: String
     let userId: String
@@ -50,13 +52,19 @@ struct EvidenceItem: Identifiable, Codable, Equatable {
     // MARK: - Firestore Dictionary Representation (NO image bytes stored)
     
     var dictionary: [String: Any] {
+        #if canImport(FirebaseFirestore)
+        let createdVal: Any = Timestamp(date: createdAt)
+        #else
+        let createdVal: Any = createdAt.timeIntervalSince1970
+        #endif
+        
         var dict: [String: Any] = [
             "id": id,
             "userId": userId,
             "goalId": goalId,
             "logId": logId,
             "storagePath": storagePath,
-            "createdAt": createdAt.timeIntervalSince1970
+            "createdAt": createdVal
         ]
         if let caption = caption {
             dict["caption"] = caption
@@ -79,11 +87,21 @@ struct EvidenceItem: Identifiable, Codable, Equatable {
         self.storagePath = storagePath
         self.caption = dictionary["caption"] as? String
         
+        #if canImport(FirebaseFirestore)
+        if let ts = dictionary["createdAt"] as? Timestamp {
+            self.createdAt = ts.dateValue()
+        } else if let timestamp = dictionary["createdAt"] as? TimeInterval {
+            self.createdAt = Date(timeIntervalSince1970: timestamp)
+        } else {
+            self.createdAt = Date()
+        }
+        #else
         if let timestamp = dictionary["createdAt"] as? TimeInterval {
             self.createdAt = Date(timeIntervalSince1970: timestamp)
         } else {
             self.createdAt = Date()
         }
+        #endif
         self.localFileName = "\(id).jpg"
     }
 }
