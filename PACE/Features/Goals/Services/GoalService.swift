@@ -15,6 +15,10 @@ import Combine
 import FirebaseCore
 #endif
 
+#if canImport(FirebaseAuth)
+import FirebaseAuth
+#endif
+
 #if canImport(FirebaseFirestore)
 import FirebaseFirestore
 #endif
@@ -31,28 +35,45 @@ final class GoalService: ObservableObject {
     
     // MARK: - User Scoping
     
-    private func activeUserId() -> String {
-        AuthService.shared.currentUser?.id ?? "local_user"
+    private func authoritativeUserId() -> String? {
+        #if canImport(FirebaseAuth)
+        if let authUid = Auth.auth().currentUser?.uid {
+            return authUid
+        }
+        #endif
+        return AuthService.shared.currentUser?.id
     }
     
-    private var localPersistenceKey: String {
-        "pace_goals_\(activeUserId())"
+    private func localPersistenceKey(for uid: String) -> String {
+        "pace_goals_\(uid)"
     }
     
     // MARK: - Local Cache Persistence
     
-    private func loadLocalGoals() -> [PACEGoal] {
-        guard let data = UserDefaults.standard.data(forKey: localPersistenceKey),
+    private func loadLocalGoals(for uid: String) -> [PACEGoal] {
+        guard let data = UserDefaults.standard.data(forKey: localPersistenceKey(for: uid)),
               let decoded = try? JSONDecoder().decode([PACEGoal].self, from: data) else {
             return []
         }
         return decoded
     }
     
-    private func saveLocalGoals(_ items: [PACEGoal]) {
+    private func saveLocalGoals(_ items: [PACEGoal], for uid: String) {
         if let encoded = try? JSONEncoder().encode(items) {
-            UserDefaults.standard.set(encoded, forKey: localPersistenceKey)
+            UserDefaults.standard.set(encoded, forKey: localPersistenceKey(for: uid))
         }
+    }
+    
+    func clearInMemoryCache() {
+        self.goals = []
+        self.errorMessage = nil
+    }
+    
+    private func syncWidget() {
+        PACEWidgetSyncService.shared.syncPrimaryGoal(
+            goals: self.goals,
+            logsByGoal: DailyLogService.shared.logsByGoal
+        )
     }
     
     // MARK: - Fetch Active Goals
@@ -62,7 +83,11 @@ final class GoalService: ObservableObject {
         errorMessage = nil
         defer { isLoading = false }
         
-        let uid = activeUserId()
+        guard let uid = authoritativeUserId() else {
+            self.goals = []
+            syncWidget()
+            return
+        }
         
         #if canImport(FirebaseFirestore)
         if AuthService.shared.isFirebaseConfigured {
@@ -79,24 +104,24 @@ final class GoalService: ObservableObject {
                 }.sorted(by: { $0.targetDate < $1.targetDate })
                 
                 self.goals = fetchedGoals
-                saveLocalGoals(fetchedGoals)
+                saveLocalGoals(fetchedGoals, for: uid)
+                syncWidget()
                 return
             } catch {
-                // Fallback to local cache if offline or Firestore query error
                 self.errorMessage = "Failed to sync with Firestore: \(error.localizedDescription)"
             }
         }
         #endif
         
-        // Load from user-scoped storage
-        let local = loadLocalGoals().filter { $0.userId == uid && $0.status == .active }
+        // Load from user-scoped storage fallback
+        let local = loadLocalGoals(for: uid).filter { $0.userId == uid && $0.status == .active }
         self.goals = local.sorted(by: { $0.targetDate < $1.targetDate })
+        syncWidget()
     }
-    
     // MARK: - Fetch Single Goal
     
     func fetchGoal(id: String) async -> PACEGoal? {
-        let uid = activeUserId()
+        guard let uid = authoritativeUserId() else { return nil }
         
         #if canImport(FirebaseFirestore)
         if AuthService.shared.isFirebaseConfigured {
@@ -117,7 +142,7 @@ final class GoalService: ObservableObject {
         }
         #endif
         
-        return loadLocalGoals().first { $0.id == id && $0.userId == uid }
+        return loadLocalGoals(for: uid).first { $0.id == id && $0.userId == uid }
     }
     
     // MARK: - Create Goal
@@ -128,19 +153,30 @@ final class GoalService: ObservableObject {
         activityTypes: [String],
         scheduledWeekdays: [Int]
     ) async throws -> PACEGoal {
-        let uid = activeUserId()
+        guard let uid = authoritativeUserId() else {
+            let error = AuthError.validation("You must be logged in to create a goal.")
+            self.errorMessage = error.localizedDescription
+            throw error
+        }
+        
         let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         
         guard !trimmedTitle.isEmpty else {
-            throw AuthError.validation("Goal title cannot be empty.")
+            let error = AuthError.validation("Goal title cannot be empty.")
+            self.errorMessage = error.localizedDescription
+            throw error
         }
         
         guard Calendar.current.startOfDay(for: targetDate) > Calendar.current.startOfDay(for: Date()) else {
-            throw AuthError.validation("Target date must be in the future.")
+            let error = AuthError.validation("Target date must be in the future.")
+            self.errorMessage = error.localizedDescription
+            throw error
         }
         
         guard !activityTypes.isEmpty else {
-            throw AuthError.validation("At least one activity type must be selected.")
+            let error = AuthError.validation("At least one activity type must be selected.")
+            self.errorMessage = error.localizedDescription
+            throw error
         }
         
         let newGoal = PACEGoal(
@@ -165,34 +201,61 @@ final class GoalService: ObservableObject {
                     .setData(newGoal.dictionary)
             } catch {
                 self.errorMessage = "Failed to save goal to Firestore: \(error.localizedDescription)"
+                throw error
             }
         }
         #endif
         
-        var current = loadLocalGoals()
+        var current = loadLocalGoals(for: uid)
         current.append(newGoal)
-        saveLocalGoals(current)
+        saveLocalGoals(current, for: uid)
         
         await fetchActiveGoals()
         return newGoal
     }
-    
     // MARK: - Update Goal
     
     func updateGoal(_ goal: PACEGoal) async throws {
-        let uid = activeUserId()
+        guard let uid = authoritativeUserId() else {
+            let error = AuthError.validation("You must be logged in to update a goal.")
+            self.errorMessage = error.localizedDescription
+            throw error
+        }
+        
         let trimmedTitle = goal.title.trimmingCharacters(in: .whitespacesAndNewlines)
         
         guard !trimmedTitle.isEmpty else {
-            throw AuthError.validation("Goal title cannot be empty.")
+            let error = AuthError.validation("Goal title cannot be empty.")
+            self.errorMessage = error.localizedDescription
+            throw error
         }
         
         guard Calendar.current.startOfDay(for: goal.targetDate) > Calendar.current.startOfDay(for: Date()) else {
-            throw AuthError.validation("Target date must be in the future.")
+            let error = AuthError.validation("Target date must be in the future.")
+            self.errorMessage = error.localizedDescription
+            throw error
         }
         
         guard !goal.activityTypes.isEmpty else {
-            throw AuthError.validation("At least one activity type must be selected.")
+            let error = AuthError.validation("At least one activity type must be selected.")
+            self.errorMessage = error.localizedDescription
+            throw error
+        }
+        
+        var secureGoal = goal
+        if secureGoal.userId != uid {
+            secureGoal = PACEGoal(
+                id: goal.id,
+                userId: uid,
+                title: trimmedTitle,
+                createdAt: goal.createdAt,
+                targetDate: goal.targetDate,
+                status: goal.status,
+                activityTypes: goal.activityTypes,
+                scheduledWeekdays: goal.scheduledWeekdays
+            )
+        } else {
+            secureGoal.title = trimmedTitle
         }
         
         #if canImport(FirebaseFirestore)
@@ -202,27 +265,30 @@ final class GoalService: ObservableObject {
                     .collection("users")
                     .document(uid)
                     .collection("goals")
-                    .document(goal.id)
-                    .setData(goal.dictionary, merge: true)
+                    .document(secureGoal.id)
+                    .setData(secureGoal.dictionary, merge: true)
             } catch {
                 self.errorMessage = "Failed to update Firestore: \(error.localizedDescription)"
+                throw error
             }
         }
         #endif
         
-        var current = loadLocalGoals()
-        if let index = current.firstIndex(where: { $0.id == goal.id && $0.userId == uid }) {
-            current[index] = goal
-            saveLocalGoals(current)
+        var current = loadLocalGoals(for: uid)
+        if let index = current.firstIndex(where: { $0.id == secureGoal.id && $0.userId == uid }) {
+            current[index] = secureGoal
+            saveLocalGoals(current, for: uid)
         }
-        
         await fetchActiveGoals()
     }
-    
     // MARK: - Delete Goal
     
     func deleteGoal(id: String) async throws {
-        let uid = activeUserId()
+        guard let uid = authoritativeUserId() else {
+            let error = AuthError.validation("You must be logged in to delete a goal.")
+            self.errorMessage = error.localizedDescription
+            throw error
+        }
         
         #if canImport(FirebaseFirestore)
         if AuthService.shared.isFirebaseConfigured {
@@ -235,17 +301,16 @@ final class GoalService: ObservableObject {
                     .delete()
             } catch {
                 self.errorMessage = "Failed to delete from Firestore: \(error.localizedDescription)"
+                throw error
             }
         }
         #endif
         
-        var current = loadLocalGoals()
+        var current = loadLocalGoals(for: uid)
         current.removeAll(where: { $0.id == id && $0.userId == uid })
-        saveLocalGoals(current)
-        
+        saveLocalGoals(current, for: uid)
         await fetchActiveGoals()
     }
-    
     // MARK: - Automated Acceptance Self-Test
     
     func runSelfTest() async -> (success: Bool, details: [String]) {

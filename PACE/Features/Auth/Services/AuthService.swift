@@ -304,10 +304,10 @@ final class AuthService: ObservableObject {
             try? Auth.auth().signOut()
         }
         #endif
-        
         UserDefaults.standard.removeObject(forKey: "pace_active_user")
         self.currentUser = nil
         self.isAuthenticated = false
+        GoalService.shared.clearInMemoryCache()
     }
     
     // MARK: - Firestore User Profile Persistence

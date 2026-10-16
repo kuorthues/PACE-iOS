@@ -5,9 +5,11 @@
 //  Minimum Goal domain model adhering to PACE requirements:
 //  - id, userId, title, createdAt, targetDate, status, activityTypes, scheduledWeekdays
 //
-
 import Foundation
 
+#if canImport(FirebaseFirestore)
+import FirebaseFirestore
+#endif
 enum GoalStatus: String, Codable, CaseIterable {
     case active = "active"
     case completed = "completed"
@@ -83,12 +85,20 @@ struct PACEGoal: Identifiable, Codable, Equatable {
     // MARK: - Dictionary Mapping for Firestore
     
     var dictionary: [String: Any] {
-        [
+        #if canImport(FirebaseFirestore)
+        let createdTimestamp: Any = Timestamp(date: createdAt)
+        let targetTimestamp: Any = Timestamp(date: targetDate)
+        #else
+        let createdTimestamp: Any = createdAt.timeIntervalSince1970
+        let targetTimestamp: Any = targetDate.timeIntervalSince1970
+        #endif
+        
+        return [
             "id": id,
             "userId": userId,
             "title": title,
-            "createdAt": createdAt.timeIntervalSince1970,
-            "targetDate": targetDate.timeIntervalSince1970,
+            "createdAt": createdTimestamp,
+            "targetDate": targetTimestamp,
             "status": status.rawValue,
             "activityTypes": activityTypes,
             "scheduledWeekdays": scheduledWeekdays
@@ -105,17 +115,43 @@ struct PACEGoal: Identifiable, Codable, Equatable {
         self.userId = userId
         self.title = title
         
+        #if canImport(FirebaseFirestore)
+        if let ts = dictionary["createdAt"] as? Timestamp {
+            self.createdAt = ts.dateValue()
+        } else if let createdTime = dictionary["createdAt"] as? TimeInterval {
+            self.createdAt = Date(timeIntervalSince1970: createdTime)
+        } else if let date = dictionary["createdAt"] as? Date {
+            self.createdAt = date
+        } else {
+            self.createdAt = Date()
+        }
+        
+        if let ts = dictionary["targetDate"] as? Timestamp {
+            self.targetDate = ts.dateValue()
+        } else if let targetTime = dictionary["targetDate"] as? TimeInterval {
+            self.targetDate = Date(timeIntervalSince1970: targetTime)
+        } else if let date = dictionary["targetDate"] as? Date {
+            self.targetDate = date
+        } else {
+            self.targetDate = Date()
+        }
+        #else
         if let createdTime = dictionary["createdAt"] as? TimeInterval {
             self.createdAt = Date(timeIntervalSince1970: createdTime)
+        } else if let date = dictionary["createdAt"] as? Date {
+            self.createdAt = date
         } else {
             self.createdAt = Date()
         }
         
         if let targetTime = dictionary["targetDate"] as? TimeInterval {
             self.targetDate = Date(timeIntervalSince1970: targetTime)
+        } else if let date = dictionary["targetDate"] as? Date {
+            self.targetDate = date
         } else {
             self.targetDate = Date()
         }
+        #endif
         
         if let statusString = dictionary["status"] as? String,
            let status = GoalStatus(rawValue: statusString) {
