@@ -89,8 +89,8 @@ final class GoalService: ObservableObject {
             return
         }
         
-        #if canImport(FirebaseFirestore)
-        if AuthService.shared.isFirebaseConfigured {
+#if canImport(FirebaseFirestore) && canImport(FirebaseAuth)
+        if AuthService.shared.isFirebaseConfigured, let authUid = Auth.auth().currentUser?.uid, authUid == uid {
             do {
                 let snapshot = try await Firestore.firestore()
                     .collection("users")
@@ -123,8 +123,8 @@ final class GoalService: ObservableObject {
     func fetchGoal(id: String) async -> PACEGoal? {
         guard let uid = authoritativeUserId() else { return nil }
         
-        #if canImport(FirebaseFirestore)
-        if AuthService.shared.isFirebaseConfigured {
+#if canImport(FirebaseFirestore) && canImport(FirebaseAuth)
+        if AuthService.shared.isFirebaseConfigured, let authUid = Auth.auth().currentUser?.uid, authUid == uid {
             do {
                 let doc = try await Firestore.firestore()
                     .collection("users")
@@ -190,8 +190,8 @@ final class GoalService: ObservableObject {
             scheduledWeekdays: scheduledWeekdays.isEmpty ? [1, 2, 3, 4, 5, 6, 7] : scheduledWeekdays
         )
         
-        #if canImport(FirebaseFirestore)
-        if AuthService.shared.isFirebaseConfigured {
+#if canImport(FirebaseFirestore) && canImport(FirebaseAuth)
+        if AuthService.shared.isFirebaseConfigured, let authUid = Auth.auth().currentUser?.uid, authUid == uid {
             do {
                 try await Firestore.firestore()
                     .collection("users")
@@ -258,8 +258,8 @@ final class GoalService: ObservableObject {
             secureGoal.title = trimmedTitle
         }
         
-        #if canImport(FirebaseFirestore)
-        if AuthService.shared.isFirebaseConfigured {
+#if canImport(FirebaseFirestore) && canImport(FirebaseAuth)
+        if AuthService.shared.isFirebaseConfigured, let authUid = Auth.auth().currentUser?.uid, authUid == uid {
             do {
                 try await Firestore.firestore()
                     .collection("users")
@@ -290,8 +290,8 @@ final class GoalService: ObservableObject {
             throw error
         }
         
-        #if canImport(FirebaseFirestore)
-        if AuthService.shared.isFirebaseConfigured {
+#if canImport(FirebaseFirestore) && canImport(FirebaseAuth)
+        if AuthService.shared.isFirebaseConfigured, let authUid = Auth.auth().currentUser?.uid, authUid == uid {
             do {
                 try await Firestore.firestore()
                     .collection("users")

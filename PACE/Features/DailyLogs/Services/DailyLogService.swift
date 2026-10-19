@@ -84,8 +84,8 @@ final class DailyLogService: ObservableObject {
             return []
         }
         
-        #if canImport(FirebaseFirestore)
-        if AuthService.shared.isFirebaseConfigured {
+#if canImport(FirebaseFirestore) && canImport(FirebaseAuth)
+        if AuthService.shared.isFirebaseConfigured, let authUid = Auth.auth().currentUser?.uid, authUid == uid {
             do {
                 let snapshot = try await Firestore.firestore()
                     .collection("users")
@@ -199,8 +199,8 @@ final class DailyLogService: ObservableObject {
             logToSave = newLog
         }
         
-        #if canImport(FirebaseFirestore)
-        if AuthService.shared.isFirebaseConfigured {
+#if canImport(FirebaseFirestore) && canImport(FirebaseAuth)
+        if AuthService.shared.isFirebaseConfigured, let authUid = Auth.auth().currentUser?.uid, authUid == uid {
             do {
                 try await Firestore.firestore()
                     .collection("users")
@@ -230,8 +230,8 @@ final class DailyLogService: ObservableObject {
             throw error
         }
         
-        #if canImport(FirebaseFirestore)
-        if AuthService.shared.isFirebaseConfigured {
+#if canImport(FirebaseFirestore) && canImport(FirebaseAuth)
+        if AuthService.shared.isFirebaseConfigured, let authUid = Auth.auth().currentUser?.uid, authUid == uid {
             do {
                 try await Firestore.firestore()
                     .collection("users")

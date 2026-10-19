@@ -109,8 +109,8 @@ final class EvidenceService: ObservableObject {
             return []
         }
         
-        #if canImport(FirebaseFirestore)
-        if AuthService.shared.isFirebaseConfigured {
+#if canImport(FirebaseFirestore) && canImport(FirebaseAuth)
+        if AuthService.shared.isFirebaseConfigured, let authUid = Auth.auth().currentUser?.uid, authUid == uid {
             do {
                 let snapshot = try await Firestore.firestore()
                     .collection("users")
@@ -191,8 +191,8 @@ final class EvidenceService: ObservableObject {
         memoryCache.setObject(compressed.image, forKey: item.id as NSString)
         
         // 3. Save metadata to Firestore (No image bytes in Firestore)
-        #if canImport(FirebaseFirestore)
-        if AuthService.shared.isFirebaseConfigured {
+#if canImport(FirebaseFirestore) && canImport(FirebaseAuth)
+        if AuthService.shared.isFirebaseConfigured, let authUid = Auth.auth().currentUser?.uid, authUid == uid {
             do {
                 try await Firestore.firestore()
                     .collection("users")
@@ -247,8 +247,8 @@ final class EvidenceService: ObservableObject {
         }
         
         // 1. Delete from Firestore
-        #if canImport(FirebaseFirestore)
-        if AuthService.shared.isFirebaseConfigured {
+#if canImport(FirebaseFirestore) && canImport(FirebaseAuth)
+        if AuthService.shared.isFirebaseConfigured, let authUid = Auth.auth().currentUser?.uid, authUid == uid {
             try? await Firestore.firestore()
                 .collection("users")
                 .document(uid)
