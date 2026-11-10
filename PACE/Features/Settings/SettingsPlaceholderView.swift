@@ -16,113 +16,122 @@ struct SettingsPlaceholderView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 28) {
-                    // Editorial Header
                     Text("SETTINGS")
                         .font(PACETextStyle.displayLarge)
                         .foregroundColor(PACETheme.primaryText)
+                        .fixedSize(horizontal: false, vertical: true)
                         .padding(.top, 16)
-                    
-                    // SYSTEM CONFIGURATION SECTION
+
                     VStack(alignment: .leading, spacing: 14) {
                         Text("SYSTEM CONFIGURATION")
-                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .font(.system(.subheadline, design: .monospaced).weight(.bold))
                             .foregroundColor(PACETheme.secondaryText)
-                            .tracking(2.0)
-                        
-                        VStack(alignment: .leading, spacing: 14) {
-                            HStack {
+                            .tracking(1.5)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        VStack(alignment: .leading, spacing: 16) {
+                            VStack(alignment: .leading, spacing: 6) {
                                 Text("BUNDLE ID")
-                                    .font(PACETextStyle.label)
+                                    .font(PACETextStyle.pixelLabel)
                                     .foregroundColor(PACETheme.secondaryText)
-                                Spacer()
                                 Text("mseud.edu.ph.PACE")
-                                    .font(PACETextStyle.metricSmall)
+                                    .font(.system(.body, design: .monospaced))
                                     .foregroundColor(PACETheme.accent)
+                                    .textSelection(.enabled)
+                                    .fixedSize(horizontal: false, vertical: true)
                             }
-                            
+
                             Rectangle()
                                 .fill(PACETheme.border)
                                 .frame(height: 1)
-                            
-                            HStack {
+                                .accessibilityHidden(true)
+
+                            VStack(alignment: .leading, spacing: 6) {
                                 Text("ACCENT TOKEN")
-                                    .font(PACETextStyle.label)
+                                    .font(PACETextStyle.pixelLabel)
                                     .foregroundColor(PACETheme.secondaryText)
-                                Spacer()
                                 HStack(spacing: 8) {
                                     Rectangle()
                                         .fill(PACETheme.accent)
-                                        .frame(width: 12, height: 12)
+                                        .frame(width: 14, height: 14)
+                                        .accessibilityHidden(true)
                                     Text("#A7FF19")
-                                        .font(PACETextStyle.metricSmall)
+                                        .font(.system(.body, design: .monospaced))
                                         .foregroundColor(PACETheme.primaryText)
                                 }
                             }
-                            
+
                             Rectangle()
                                 .fill(PACETheme.border)
                                 .frame(height: 1)
-                            
-                            HStack {
+                                .accessibilityHidden(true)
+
+                            VStack(alignment: .leading, spacing: 6) {
                                 Text("GEOMETRY")
-                                    .font(PACETextStyle.label)
+                                    .font(PACETextStyle.pixelLabel)
                                     .foregroundColor(PACETheme.secondaryText)
-                                Spacer()
                                 Text("CORNER RADIUS 0")
-                                    .font(PACETextStyle.metricSmall)
+                                    .font(.system(.body, design: .monospaced))
                                     .foregroundColor(PACETheme.secondaryText)
+                                    .fixedSize(horizontal: false, vertical: true)
                             }
                         }
-                        .padding(16)
+                        .padding(18)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         .paceCard()
                     }
-                    
-                    // ACCOUNT & AUTHENTICATION SECTION
+
                     VStack(alignment: .leading, spacing: 14) {
                         Text("ACCOUNT & AUTHENTICATION")
-                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .font(.system(.subheadline, design: .monospaced).weight(.bold))
                             .foregroundColor(PACETheme.secondaryText)
-                            .tracking(2.0)
-                        
+                            .tracking(1.5)
+                            .fixedSize(horizontal: false, vertical: true)
+
                         VStack(alignment: .leading, spacing: 16) {
                             if let user = authService.currentUser {
-                                HStack {
+                                VStack(alignment: .leading, spacing: 6) {
                                     Text("USER")
-                                        .font(PACETextStyle.label)
+                                        .font(PACETextStyle.pixelLabel)
                                         .foregroundColor(PACETheme.secondaryText)
-                                    Spacer()
                                     Text(user.displayName ?? "PACE User")
-                                        .font(PACETextStyle.metricSmall)
+                                        .font(.body)
                                         .foregroundColor(PACETheme.primaryText)
+                                        .fixedSize(horizontal: false, vertical: true)
                                 }
-                                
+
                                 Rectangle()
                                     .fill(PACETheme.border)
                                     .frame(height: 1)
-                                
-                                HStack {
+                                    .accessibilityHidden(true)
+
+                                VStack(alignment: .leading, spacing: 6) {
                                     Text("EMAIL")
-                                        .font(PACETextStyle.label)
+                                        .font(PACETextStyle.pixelLabel)
                                         .foregroundColor(PACETheme.secondaryText)
-                                    Spacer()
                                     Text(user.email)
-                                        .font(PACETextStyle.metricSmall)
+                                        .font(.body)
                                         .foregroundColor(PACETheme.secondaryText)
+                                        .textSelection(.enabled)
+                                        .fixedSize(horizontal: false, vertical: true)
                                 }
-                                
+
                                 Rectangle()
                                     .fill(PACETheme.border)
                                     .frame(height: 1)
+                                    .accessibilityHidden(true)
                             } else {
                                 Text("Authenticated Session Active.")
-                                    .font(PACETextStyle.label)
+                                    .font(.body)
                                     .foregroundColor(PACETheme.secondaryText)
-                                
+                                    .fixedSize(horizontal: false, vertical: true)
+
                                 Rectangle()
                                     .fill(PACETheme.border)
                                     .frame(height: 1)
+                                    .accessibilityHidden(true)
                             }
-                            
+
                             PACEButton(
                                 title: "LOGOUT",
                                 icon: "rectangle.portrait.and.arrow.right",
@@ -130,14 +139,20 @@ struct SettingsPlaceholderView: View {
                             ) {
                                 authService.signOut()
                             }
+                            .frame(maxWidth: .infinity, minHeight: 48)
+                            .accessibilityHint("Signs out of your PACE account")
                         }
-                        .padding(16)
+                        .padding(18)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         .paceCard()
                     }
-                    
-                    Spacer(minLength: 40)
+
+                    Spacer(minLength: 24)
                 }
-                .padding(.horizontal, 24)
+                .padding(.horizontal, 20)
+                .padding(.bottom, 20)
+                .frame(maxWidth: 640)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
             }
             .background(PACETheme.background.ignoresSafeArea())
             .toolbar(.hidden, for: .navigationBar)
