@@ -284,8 +284,8 @@ struct LogProgressView: View {
                     .foregroundColor(PACEColor.textSecondary)
                 }
             }
-            .onAppear {
-                // Initialize default activities if none selected
+            .task {
+                _ = await evidenceService.fetchEvidence(for: goal.id)
                 if selectedActivities.isEmpty, let first = goal.activityTypes.first {
                     selectedActivities.insert(first)
                 }
