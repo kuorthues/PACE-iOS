@@ -33,8 +33,8 @@ struct LogProgressView: View {
     // Evidence State
     @State private var selectedEvidenceImage: UIImage? = nil
     @State private var evidenceCaption: String = ""
-    @State private var existingEvidence: EvidenceItem? = nil
-    @State private var shouldRemoveEvidence: Bool = false
+    @State private var existingEvidenceItems: [EvidenceItem] = []
+    @State private var evidenceToRemoveIds: Set<String> = []
     @State private var isSaving: Bool = false
     
     private let presetDurations = [15, 30, 45, 60, 90, 120]
@@ -235,10 +235,11 @@ struct LogProgressView: View {
                     EvidencePickerSection(
                         selectedImage: $selectedEvidenceImage,
                         caption: $evidenceCaption,
-                        existingEvidence: existingEvidence,
-                        onRemoveExistingEvidence: {
-                            shouldRemoveEvidence = true
-                            existingEvidence = nil
+                        existingEvidenceItems: existingEvidenceItems.filter {
+                            !evidenceToRemoveIds.contains($0.id)
+                        },
+                        onRemoveExistingEvidence: { item in
+                            evidenceToRemoveIds.insert(item.id)
                         }
                     )
                     
@@ -312,24 +313,39 @@ struct LogProgressView: View {
     
     private func checkExistingLog() {
         let dString = DailyLog.dateFormatter.string(from: Calendar.current.startOfDay(for: selectedDate))
+        evidenceToRemoveIds = []
+        selectedEvidenceImage = nil
+        
         if let existing = logService.fetchLog(for: goal.id, date: selectedDate) {
             isExistingEntry = true
             selectedActivities = Set(existing.selectedActivities)
             durationMinutes = existing.durationMinutes
             customDurationInput = "\(existing.durationMinutes)"
             note = existing.note ?? ""
-            
-            existingEvidence = evidenceService.fetchEvidence(forGoal: goal.id, logId: existing.id) ?? evidenceService.fetchEvidence(forGoal: goal.id, logId: dString)
-            if let ev = existingEvidence {
-                evidenceCaption = ev.caption ?? ""
-            }
+            existingEvidenceItems = loadEvidenceItems(logId: existing.id, dateString: dString)
         } else {
             isExistingEntry = false
-            existingEvidence = evidenceService.fetchEvidence(forGoal: goal.id, logId: dString)
-            if let ev = existingEvidence {
-                evidenceCaption = ev.caption ?? ""
-            }
+            existingEvidenceItems = loadEvidenceItems(logId: dString, dateString: dString)
         }
+        
+        evidenceCaption = ""
+    }
+    
+    private func loadEvidenceItems(logId: String, dateString: String) -> [EvidenceItem] {
+        var items = evidenceService.fetchEvidenceItems(forGoal: goal.id, logId: logId)
+        if logId != dateString {
+            items.append(contentsOf: evidenceService.fetchEvidenceItems(forGoal: goal.id, logId: dateString))
+        }
+        
+        var seenIds = Set<String>()
+        return items
+            .filter { seenIds.insert($0.id).inserted }
+            .sorted {
+                if $0.createdAt == $1.createdAt {
+                    return $0.id < $1.id
+                }
+                return $0.createdAt < $1.createdAt
+            }
     }
     
     private func submitLog() {
@@ -347,7 +363,6 @@ struct LogProgressView: View {
         Task {
             defer { isSaving = false }
             do {
-                // 1. Save or update daily log entry
                 let savedLog = try await logService.saveLog(
                     goalId: goal.id,
                     date: selectedDate,
@@ -356,12 +371,10 @@ struct LogProgressView: View {
                     note: note.isEmpty ? nil : note
                 )
                 
-                // 2. Handle removal of existing evidence if requested
-                if shouldRemoveEvidence, let existing = existingEvidence {
-                    try? await evidenceService.deleteEvidence(existing)
+                for item in existingEvidenceItems where evidenceToRemoveIds.contains(item.id) {
+                    try? await evidenceService.deleteEvidence(item)
                 }
                 
-                // 3. Handle upload of newly selected evidence
                 if let imageToUpload = selectedEvidenceImage {
                     do {
                         let evidenceItem = try await evidenceService.saveEvidence(
@@ -379,11 +392,24 @@ struct LogProgressView: View {
                             evidenceId: evidenceItem.id
                         )
                     } catch {
-                        // Safe failure presentation without corrupting log
-                        self.errorMessage = "Log saved, but photo evidence upload failed: \(error.localizedDescription)"
+                        errorMessage = "Log saved, but photo evidence could not be attached: \(error.localizedDescription)"
                         onSaved?()
                         return
                     }
+                } else if let referencedEvidenceId = savedLog.evidenceId,
+                          evidenceToRemoveIds.contains(referencedEvidenceId) {
+                    let retainedEvidence = existingEvidenceItems.first {
+                        !evidenceToRemoveIds.contains($0.id)
+                    }
+                    _ = try await logService.saveLog(
+                        goalId: goal.id,
+                        date: selectedDate,
+                        selectedActivities: Array(selectedActivities),
+                        durationMinutes: durationMinutes,
+                        note: note.isEmpty ? nil : note,
+                        evidenceId: retainedEvidence?.id,
+                        clearEvidenceReference: retainedEvidence == nil
+                    )
                 }
                 
                 onSaved?()

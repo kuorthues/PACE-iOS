@@ -35,29 +35,33 @@ struct JourneyPlaceholderView: View {
                     VStack(spacing: 0) {
                         // Multi-Goal Selector bar if multiple goals exist
                         if activeGoals.count > 1 {
-                            ScrollView(.horizontal, showsIndicators: false) {
-                                HStack(spacing: 8) {
-                                    ForEach(activeGoals) { g in
-                                        Button(action: {
-                                            selectedGoalId = g.id
-                                        }) {
-                                            Text(g.title.uppercased())
-                                                .font(.system(size: 11, weight: .bold, design: .monospaced))
-                                                .foregroundColor(g.id == goal.id ? PACEColor.background : PACEColor.textPrimary)
-                                                .padding(.horizontal, 10)
-                                                .padding(.vertical, 6)
-                                                .background(g.id == goal.id ? PACEColor.accent : PACEColor.surfaceElevated)
-                                                .overlay(
-                                                    Rectangle().stroke(g.id == goal.id ? PACEColor.accent : PACEColor.border, lineWidth: 1)
-                                                )
+                            Menu {
+                                ForEach(activeGoals) { g in
+                                    Button {
+                                        selectedGoalId = g.id
+                                    } label: {
+                                        if g.id == goal.id {
+                                            Label(g.title, systemImage: "checkmark")
+                                        } else {
+                                            Text(g.title)
                                         }
-                                        .buttonStyle(.plain)
                                     }
                                 }
+                            } label: {
+                                HStack(spacing: 8) {
+                                    Text(goal.title)
+                                        .font(.system(size: 12, weight: .bold, design: .monospaced))
+                                        .lineLimit(1)
+                                        .truncationMode(.middle)
+                                    Image(systemName: "chevron.down")
+                                        .font(.system(size: 10, weight: .bold))
+                                }
+                                .foregroundColor(PACEColor.textPrimary)
                                 .padding(.horizontal, 16)
                                 .padding(.vertical, 10)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(PACEColor.surface)
                             }
-                            .background(PACEColor.surface)
                             
                             Rectangle()
                                 .fill(PACEColor.border)

@@ -55,7 +55,7 @@ struct JourneyDay: Identifiable, Equatable {
     let isToday: Bool
     let isTarget: Bool
     let log: DailyLog?
-    let evidence: EvidenceItem?
+    let evidenceItems: [EvidenceItem]
     
     // MARK: - Formatting Helpers
     

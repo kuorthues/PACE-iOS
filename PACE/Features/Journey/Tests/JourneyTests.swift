@@ -93,10 +93,28 @@ final class JourneyTests {
             userId: "test_user_789",
             goalId: testGoal.id,
             logId: dateStringMinus3,
-            caption: "Proof on day 3"
+            caption: "Proof on day 3",
+            createdAt: calendar.date(byAdding: .minute, value: 2, to: logDayMinus3)!
+        )
+        let earlierEvidence = EvidenceItem(
+            id: "ev_day3_earlier",
+            userId: "test_user_789",
+            goalId: testGoal.id,
+            logId: dateStringMinus3,
+            caption: "Earlier photo",
+            createdAt: logDayMinus3
+        )
+        let logLinkedEvidence = EvidenceItem(
+            id: "ev_day3_log",
+            userId: "test_user_789",
+            goalId: testGoal.id,
+            logId: "log_day3",
+            caption: "Log-linked photo",
+            createdAt: calendar.date(byAdding: .minute, value: 1, to: logDayMinus3)!
         )
         
         let log1 = DailyLog(
+            id: "log_day3",
             goalId: testGoal.id,
             date: logDayMinus3,
             selectedActivities: ["Coding"],
@@ -114,19 +132,38 @@ final class JourneyTests {
         let resolvedDays = JourneyTimelineBuilder.buildTimeline(
             goal: testGoal,
             logs: [log1, log2],
-            evidenceItems: [evidenceItem],
+            evidenceItems: [evidenceItem, earlierEvidence, logLinkedEvidence, evidenceItem],
             asOf: today,
             calendar: calendar
         )
         
         // Check Day -3 (Index 0)
         assert(resolvedDays[0].state == .completedWithEvidence, "Day -3 resolved to .completedWithEvidence")
-        assert(resolvedDays[0].evidence != nil, "Day -3 has evidence associated")
-        assert(resolvedDays[0].evidence?.caption == "Proof on day 3", "Day -3 evidence caption matches")
+        assert(resolvedDays[0].evidenceItems.count == 3, "Day -3 attaches multiple unique evidence items")
+        assert(resolvedDays[0].evidenceItems.map(\.id) == ["ev_day3_earlier", "ev_day3_log", "ev_day3"], "Day -3 evidence is sorted by creation date")
+        assert(resolvedDays[0].evidenceItems.first?.caption == "Earlier photo", "Date-string fallback evidence is attached")
         
         // Check Day -2 (Index 1)
         assert(resolvedDays[1].state == .completed, "Day -2 resolved to .completed")
-        assert(resolvedDays[1].evidence == nil, "Day -2 has no evidence")
+        assert(resolvedDays[1].evidenceItems.isEmpty, "Day -2 has no evidence")
+        let missingMetadataLog = DailyLog(
+            goalId: testGoal.id,
+            date: logDayMinus2,
+            selectedActivities: ["Review"],
+            durationMinutes: 45,
+            evidenceId: "metadata_missing"
+        )
+        let missingMetadataDays = JourneyTimelineBuilder.buildTimeline(
+            goal: testGoal,
+            logs: [missingMetadataLog],
+            evidenceItems: [],
+            asOf: today,
+            calendar: calendar
+        )
+        let missingMetadataDateString = DailyLog.dateFormatter.string(from: logDayMinus2)
+        let missingMetadataDay = missingMetadataDays.first(where: { $0.id == missingMetadataDateString })
+        assert(missingMetadataDay?.state == .completedWithEvidence, "Missing evidence metadata preserves proof state")
+        assert(missingMetadataDay?.evidenceItems.isEmpty == true, "Missing evidence metadata exposes no unrelated photos")
         
         // Check Day -1 (Index 2)
         assert(resolvedDays[2].state == .missed, "Day -1 resolved to .missed (unlogged past scheduled day)")
@@ -211,7 +248,7 @@ final class JourneyTests {
         let summary = JourneyTimelineBuilder.computeSummary(days: resolvedDays)
         assert(summary.totalDays == 8, "Summary total days is 8")
         assert(summary.completedCount == 2, "Summary completed count is 2")
-        assert(summary.evidenceCount == 1, "Summary evidence count is 1")
+        assert(summary.evidenceCount == 3, "Summary photo proof count includes every attached image")
         assert(summary.missedCount == 1, "Summary missed count is 1")
         
         // ---------------------------------------------------------------

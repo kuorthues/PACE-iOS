@@ -24,6 +24,7 @@ struct JourneyDetailView: View {
     @State private var dateForLogSheet: Date? = nil
     @State private var evidenceForViewer: EvidenceItem? = nil
     @State private var showLegend: Bool = false
+    @State private var showFocusedTimeline = false
     
     private var goalLogs: [DailyLog] {
         logService.logsByGoal[goal.id] ?? []
@@ -46,7 +47,8 @@ struct JourneyDetailView: View {
     }
     
     var body: some View {
-        ScrollView {
+        ScrollViewReader { proxy in
+            ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 // Goal Header Banner
                 headerBanner
@@ -61,32 +63,29 @@ struct JourneyDetailView: View {
                 // Visual Node State Legend
                 legendSection
                 
-                // Horizontal Connected Journey Line Section
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack {
-                        Text("CHRONOLOGICAL TIMELINE")
-                            .font(PACETypography.sectionHeader())
-                            .foregroundColor(PACEColor.textPrimary)
-                        
-                        Spacer()
-                        
-                        Text("SCROLL HORIZONTALLY")
-                            .font(.system(size: 10, weight: .bold, design: .monospaced))
-                            .foregroundColor(PACEColor.textSecondary)
-                    }
-                    
-                    JourneyTimelineView(
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("ALL DAYS")
+                        .font(PACETypography.sectionHeader())
+                        .foregroundColor(PACEColor.textPrimary)
+                    JourneyOverviewList(
                         days: days,
                         selectedDay: $selectedDay,
-                        isCompact: false
-                    )
-                    .frame(height: 140)
-                    .background(PACEColor.surfaceElevated)
-                    .overlay(
-                        Rectangle().stroke(PACEColor.border, lineWidth: 1)
+                        onViewEvidence: { evidence in evidenceForViewer = evidence }
                     )
                 }
                 
+                DisclosureGroup(isExpanded: $showFocusedTimeline) {
+                    JourneyTimelineView(
+                        days: days,
+                        selectedDay: $selectedDay
+                    )
+                    .background(PACEColor.surfaceElevated)
+                    .overlay(Rectangle().stroke(PACEColor.border, lineWidth: 1))
+                } label: {
+                    Text("FOCUSED JOURNEY LINE")
+                        .font(PACETypography.sectionHeader())
+                        .foregroundColor(PACEColor.textPrimary)
+                }
                 // Selected Day Detail Panel
                 if let selected = selectedDay {
                     VStack(alignment: .leading, spacing: 10) {
@@ -105,11 +104,19 @@ struct JourneyDetailView: View {
                             }
                         )
                     }
+                    .id("selected-day-detail")
                 }
                 
                 Spacer(minLength: 30)
             }
             .padding(20)
+            }
+            .onChange(of: selectedDay?.id) { _, dayId in
+                guard dayId != nil else { return }
+                withAnimation(.easeInOut(duration: 0.25)) {
+                    proxy.scrollTo("selected-day-detail", anchor: .top)
+                }
+            }
         }
         .background(PACEColor.background.ignoresSafeArea())
         .navigationTitle("JOURNEY")
@@ -166,17 +173,21 @@ struct JourneyDetailView: View {
                 .font(PACETypography.titleLarge())
                 .foregroundColor(PACEColor.textPrimary)
             
-            HStack(spacing: 8) {
-                Text("FREQUENCY: \(goal.scheduleDescription)")
-                    .font(PACETypography.caption())
+            VStack(alignment: .leading, spacing: 4) {
+                Text("START: \(days.first?.formattedMediumDate ?? goal.createdAt.formatted(date: .abbreviated, time: .omitted))")
+                    .font(PACETextStyle.pixelMetadata)
                     .foregroundColor(PACEColor.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
                 
-                Text("•")
-                    .foregroundColor(PACEColor.border)
-                
-                Text("DEADLINE: \(goal.formattedTargetDate)")
-                    .font(PACETypography.caption())
+                Text("TARGET: \(goal.formattedTargetDate)")
+                    .font(PACETextStyle.pixelMetadata)
                     .foregroundColor(PACEColor.accent)
+                    .fixedSize(horizontal: false, vertical: true)
+                
+                Text("JOURNEY: \(summary.totalDays) DAYS · \(goal.scheduleDescription)")
+                    .font(PACETextStyle.pixelMetadata)
+                    .foregroundColor(PACEColor.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.top, 2)
         }

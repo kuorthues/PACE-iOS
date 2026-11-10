@@ -64,13 +64,19 @@ enum JourneyTimelineBuilder {
             }
         }
         
-        // Map evidence by id and logId
+        // Index evidence once so long journeys do not rescan every photo for every day.
         var evidenceById: [String: EvidenceItem] = [:]
-        var evidenceByLogId: [String: EvidenceItem] = [:]
-        for item in evidenceItems {
-            evidenceById[item.id] = item
-            evidenceByLogId[item.logId] = item
+        for item in evidenceItems where item.goalId == goal.id {
+            if let existing = evidenceById[item.id] {
+                if item.createdAt < existing.createdAt {
+                    evidenceById[item.id] = item
+                }
+            } else {
+                evidenceById[item.id] = item
+            }
         }
+        let evidenceByLogId = Dictionary(grouping: evidenceById.values, by: \.logId)
+        
         
         var journeyDays: [JourneyDay] = []
         var currentDay = startDate
@@ -87,19 +93,26 @@ enum JourneyTimelineBuilder {
             
             let log = logsByDate[dString]
             
-            // Resolve attached evidence
-            var evidence: EvidenceItem? = nil
-            if let log = log {
-                if let evId = log.evidenceId, let ev = evidenceById[evId] {
-                    evidence = ev
-                } else if let ev = evidenceByLogId[log.id] {
-                    evidence = ev
-                } else if let ev = evidenceByLogId[dString] {
-                    evidence = ev
+            let attachedEvidence: [EvidenceItem]
+            if let log {
+                var candidates = evidenceByLogId[log.id] ?? []
+                if log.id != dString {
+                    candidates.append(contentsOf: evidenceByLogId[dString] ?? [])
                 }
+                if let evidenceId = log.evidenceId,
+                   let linkedEvidence = evidenceById[evidenceId],
+                   !candidates.contains(where: { $0.id == linkedEvidence.id }) {
+                    candidates.append(linkedEvidence)
+                }
+                attachedEvidence = candidates
             } else {
-                evidence = evidenceByLogId[dString]
+                attachedEvidence = evidenceByLogId[dString] ?? []
             }
+            let sortedEvidence = attachedEvidence.sorted {
+                if $0.createdAt == $1.createdAt { return $0.id < $1.id }
+                return $0.createdAt < $1.createdAt
+            }
+            
             
             // State resolution
             let state: JourneyDayState
@@ -108,7 +121,7 @@ enum JourneyTimelineBuilder {
             } else if isToday && log == nil {
                 state = .today
             } else if let log = log {
-                let hasEvidence = (evidence != nil || log.evidenceId != nil)
+                let hasEvidence = (!sortedEvidence.isEmpty || log.evidenceId != nil)
                 state = hasEvidence ? .completedWithEvidence : .completed
             } else if isPast {
                 state = isScheduled ? .missed : .rest
@@ -128,7 +141,7 @@ enum JourneyTimelineBuilder {
                 isToday: isToday,
                 isTarget: isTarget,
                 log: log,
-                evidence: evidence
+                evidenceItems: sortedEvidence
             )
             journeyDays.append(day)
             
@@ -157,7 +170,7 @@ enum JourneyTimelineBuilder {
                 if day.isScheduled { scheduledPastCount += 1 }
             case .completedWithEvidence:
                 completed += 1
-                evidenceCount += 1
+                evidenceCount += max(day.evidenceItems.count, day.log?.evidenceId == nil ? 0 : 1)
                 if day.isScheduled { scheduledPastCount += 1 }
             case .missed:
                 missed += 1

@@ -101,7 +101,21 @@ struct JourneyIntroductionView: View {
                     Spacer()
                     
                     // Node 02 evidence thumbnail
-                    SquareEvidenceMiniThumbnail(evidence: nil, size: 32, stemHeight: 8)
+                    VStack(spacing: 0) {
+                        ZStack {
+                            Rectangle().fill(PACETheme.surfaceElevated)
+                            Image(systemName: "camera.fill")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundColor(PACETheme.accent)
+                        }
+                        .frame(width: 32, height: 32)
+                        .overlay(Rectangle().stroke(PACETheme.accent, lineWidth: 1))
+                        Rectangle()
+                            .fill(PACETheme.accent)
+                            .frame(width: 2, height: 8)
+                    }
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("Evidence thumbnail preview")
                     
                     // Remaining nodes space
                     Spacer()

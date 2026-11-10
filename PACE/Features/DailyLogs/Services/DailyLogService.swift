@@ -128,7 +128,8 @@ final class DailyLogService: ObservableObject {
         selectedActivities: [String],
         durationMinutes: Int,
         note: String? = nil,
-        evidenceId: String? = nil
+        evidenceId: String? = nil,
+        clearEvidenceReference: Bool = false
     ) async throws -> DailyLog {
         errorMessage = nil
         guard let uid = authoritativeUserId() else {
@@ -176,7 +177,9 @@ final class DailyLogService: ObservableObject {
             existing.selectedActivities = selectedActivities
             existing.durationMinutes = durationMinutes
             existing.note = note
-            if evidenceId != nil {
+            if clearEvidenceReference {
+                existing.evidenceId = nil
+            } else if evidenceId != nil {
                 existing.evidenceId = evidenceId
             }
             existing.updatedAt = Date()

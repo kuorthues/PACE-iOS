@@ -14,7 +14,7 @@
 //  - Today: emphasized #A7FF19 outline
 //  - Target: square terminal node
 //  - Evidence thumbnails attach to the correct day and remain square
-//  - Supports both full interactive mode and compact preview mode
+//  - Focused day-by-day exploration; compact dashboard uses a separate presentation
 //
 
 import SwiftUI
@@ -22,29 +22,18 @@ import SwiftUI
 struct JourneyTimelineView: View {
     let days: [JourneyDay]
     @Binding var selectedDay: JourneyDay?
-    var isCompact: Bool = false
     
-    private var columnWidth: CGFloat {
-        isCompact ? 52 : 68
-    }
-    
-    private var thumbnailSize: CGFloat {
-        isCompact ? 28 : 36
-    }
-    
-    private var thumbnailAreaHeight: CGFloat {
-        thumbnailSize + 10
-    }
-    
-    private var nodeSize: CGFloat {
-        isCompact ? 12 : 16
-    }
+    private let columnWidth: CGFloat = 68
+    private let thumbnailSize: CGFloat = 36
+    private let thumbnailAreaHeight: CGFloat = 46
+    private let nodeSize: CGFloat = 16
     
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 0) {
-                    ForEach(Array(days.enumerated()), id: \.element.id) { index, day in
+                    ForEach(days.indices, id: \.self) { index in
+                        let day = days[index]
                         DayColumnView(
                             day: day,
                             index: index,
@@ -53,7 +42,6 @@ struct JourneyTimelineView: View {
                             thumbnailSize: thumbnailSize,
                             thumbnailAreaHeight: thumbnailAreaHeight,
                             nodeSize: nodeSize,
-                            isCompact: isCompact,
                             isSelected: selectedDay?.id == day.id
                         )
                         .id(day.id)
@@ -64,7 +52,7 @@ struct JourneyTimelineView: View {
                     }
                 }
                 .padding(.horizontal, 16)
-                .padding(.vertical, isCompact ? 10 : 16)
+                .padding(.vertical, 16)
             }
             .onAppear {
                 scrollToActiveDay(proxy: proxy)
@@ -102,7 +90,6 @@ private struct DayColumnView: View {
     let thumbnailSize: CGFloat
     let thumbnailAreaHeight: CGFloat
     let nodeSize: CGFloat
-    let isCompact: Bool
     let isSelected: Bool
     
     private var isFirst: Bool { index == 0 }
@@ -110,15 +97,13 @@ private struct DayColumnView: View {
     
     var body: some View {
         VStack(spacing: 6) {
-            // 1. Top Header Label (Day Index or Status)
             headerLabel
-                .frame(height: isCompact ? 14 : 18)
+                .fixedSize(horizontal: false, vertical: true)
             
-            // 2. Connected Square Evidence Thumbnail Slot
             ZStack(alignment: .bottom) {
                 if day.state == .completedWithEvidence {
                     SquareEvidenceMiniThumbnail(
-                        evidence: day.evidence,
+                        evidenceItems: day.evidenceItems,
                         size: thumbnailSize,
                         stemHeight: 8
                     )
@@ -129,22 +114,16 @@ private struct DayColumnView: View {
             }
             .frame(width: columnWidth, height: thumbnailAreaHeight)
             
-            // 3. Timeline Center Track & Node
             ZStack {
-                // Background Track Line
                 HStack(spacing: 0) {
-                    // Left connecting line segment
                     Rectangle()
-                        .fill(isFirst ? Color.clear : trackColor(for: index - 1))
+                        .fill(isFirst ? Color.clear : PACEColor.border)
                         .frame(height: 2)
-                    
-                    // Right connecting line segment
                     Rectangle()
-                        .fill(isLast ? Color.clear : trackColor(for: index))
+                        .fill(isLast ? Color.clear : PACEColor.border)
                         .frame(height: 2)
                 }
                 
-                // Day Node
                 JourneyTimelineNodeView(
                     state: day.state,
                     isSelected: isSelected,
@@ -153,19 +132,18 @@ private struct DayColumnView: View {
             }
             .frame(width: columnWidth, height: nodeSize + 14)
             
-            // 4. Bottom Metadata Labels (Weekday & Short Date)
             VStack(spacing: 2) {
-                Text(isCompact ? day.weekdaySingleLetter : day.weekdayShort)
-                    .font(.system(size: isCompact ? 9 : 10, weight: day.isToday ? .bold : .medium))
+                Text(day.weekdayShort)
+                    .font(PACETextStyle.pixelMetadata)
                     .foregroundColor(day.isToday ? PACEColor.accent : PACEColor.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
                 
                 Text(day.formattedShortDate)
-                    .font(.system(size: isCompact ? 8 : 9, weight: .regular, design: .monospaced))
+                    .font(PACETextStyle.pixelMetadata)
                     .foregroundColor(day.isToday ? PACEColor.textPrimary : PACEColor.textSecondary.opacity(0.8))
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .frame(height: isCompact ? 24 : 28)
             
-            // 5. Selection Bottom Indicator
             Rectangle()
                 .fill(isSelected ? PACEColor.accent : Color.clear)
                 .frame(width: 20, height: 2)
@@ -177,21 +155,101 @@ private struct DayColumnView: View {
     private var headerLabel: some View {
         if day.isTarget {
             Text("TARGET")
-                .font(.system(size: isCompact ? 8 : 9, weight: .bold, design: .monospaced))
+                .font(PACETextStyle.pixelMetadata)
                 .foregroundColor(PACEColor.accent)
         } else if day.isToday {
             Text("TODAY")
-                .font(.system(size: isCompact ? 8 : 9, weight: .bold, design: .monospaced))
+                .font(PACETextStyle.pixelMetadata)
                 .foregroundColor(PACEColor.accent)
         } else {
-            Text(isCompact ? "D\(day.dayIndex)" : "DAY \(day.dayIndex)")
-                .font(.system(size: isCompact ? 8 : 9, weight: .medium, design: .monospaced))
+            Text(day.formattedDayIndex)
+                .font(PACETextStyle.pixelMetadata)
                 .foregroundColor(PACEColor.textSecondary)
         }
     }
-    
-    private func trackColor(for segmentIndex: Int) -> Color {
-        // Subtle line linking all nodes
-        PACEColor.border
+}
+
+struct JourneyOverviewList: View {
+    let days: [JourneyDay]
+    @Binding var selectedDay: JourneyDay?
+    var onViewEvidence: ((EvidenceItem) -> Void)? = nil
+
+    var body: some View {
+        LazyVStack(spacing: 0) {
+            ForEach(days.indices, id: \.self) { index in
+                let day = days[index]
+                HStack(alignment: .top, spacing: 12) {
+                    VStack(spacing: 0) {
+                        JourneyTimelineNodeView(
+                            state: day.state,
+                            isSelected: selectedDay?.id == day.id,
+                            nodeBaseSize: 16
+                        )
+                        Rectangle()
+                            .fill(index == days.count - 1 ? .clear : PACEColor.border)
+                            .frame(width: 2, height: 34)
+                    }
+                    .frame(width: 28)
+                    
+                    Button {
+                        selectedDay = day
+                    } label: {
+                        VStack(alignment: .leading, spacing: 5) {
+                            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                Text(day.formattedDayProgress)
+                                    .font(PACETypography.metricSmall())
+                                    .foregroundColor(day.state == .completed || day.state == .completedWithEvidence ? PACEColor.accent : PACEColor.textPrimary)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.8)
+                                Spacer(minLength: 4)
+                                Text(day.state.title.uppercased())
+                                    .font(PACETextStyle.pixelMetadata)
+                                    .foregroundColor(PACEColor.textSecondary)
+                                    .multilineTextAlignment(.trailing)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            Text(day.formattedFullDate)
+                                .font(PACETypography.body())
+                                .foregroundColor(PACEColor.textPrimary)
+                            if let log = day.log {
+                                Text(log.selectedActivities.joined(separator: " • "))
+                                    .font(PACETypography.caption())
+                                    .foregroundColor(PACEColor.textSecondary)
+                                    .lineLimit(2)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("\(day.formattedFullDate), \(day.state.title), day \(day.dayIndex)")
+                    
+                    if day.state == .completedWithEvidence,
+                       let evidence = day.evidenceItems.first {
+                        Button {
+                            onViewEvidence?(evidence)
+                        } label: {
+                            ZStack(alignment: .bottomTrailing) {
+                                JourneyEvidencePhoto(evidence: evidence, size: 64)
+                                if day.evidenceItems.count > 1 {
+                                    Text("+\(day.evidenceItems.count - 1)")
+                                        .font(PACETextStyle.pixelMetadata)
+                                        .foregroundColor(.white)
+                                        .padding(3)
+                                        .background(PACEColor.background)
+                                }
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("View photo evidence, \(day.evidenceItems.count) photos")
+                    }
+                }
+                .frame(minHeight: 78)
+                .padding(12)
+                .background(selectedDay?.id == day.id ? PACEColor.surfaceElevated : PACEColor.surface)
+                .overlay(Rectangle().stroke(selectedDay?.id == day.id ? PACEColor.accent : PACEColor.border, lineWidth: 1))
+                .padding(.bottom, 8)
+            }
+        }
     }
 }

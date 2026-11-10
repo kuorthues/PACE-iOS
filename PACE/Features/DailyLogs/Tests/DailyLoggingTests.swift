@@ -143,6 +143,15 @@ struct DailyLoggingTestSuite {
             )
             assert(log1.durationMinutes == 30, "Initial log created with duration 30m")
             
+            let linkedLog = try await service.saveLog(
+                goalId: testGoalId,
+                date: today,
+                selectedActivities: ["Review"],
+                durationMinutes: 30,
+                evidenceId: "test-evidence-one"
+            )
+            assert(linkedLog.evidenceId == "test-evidence-one", "Evidence reference attaches to its daily log")
+            
             // B. Duplicate same-day log: Updating same day modifies existing log
             let log2 = try await service.saveLog(
                 goalId: testGoalId,
@@ -153,6 +162,17 @@ struct DailyLoggingTestSuite {
             )
             assert(log2.id == log1.id, "Duplicate same-day log converted to update on same document ID")
             assert(log2.durationMinutes == 50, "Updated duration persisted")
+            assert(log2.evidenceId == linkedLog.evidenceId, "Editing a log without new evidence preserves the existing reference")
+            
+            let clearedLog = try await service.saveLog(
+                goalId: testGoalId,
+                date: today,
+                selectedActivities: ["Review", "Practice"],
+                durationMinutes: 50,
+                note: "Updated session",
+                clearEvidenceReference: true
+            )
+            assert(clearedLog.evidenceId == nil, "Removing the final photo clears the daily log evidence reference")
             
             let currentLogs = await service.fetchLogs(for: testGoalId)
             assert(currentLogs.count == 1, "Logs count remains 1 for same calendar day (no duplicate entries)")

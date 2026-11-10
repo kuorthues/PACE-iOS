@@ -51,7 +51,7 @@ final class EvidenceTests {
         
         // 2. Test Metadata Serialization & Firestore Scoping (NO raw bytes)
         let testUserId = "test_student_456"
-        let testGoalId = "goal_ios_mastery"
+        let testGoalId = "goal_ios_mastery_\(UUID().uuidString)"
         let testLogId = "2026-09-11"
         let testCaption = "Finished chapter on SwiftUI navigation"
         
@@ -96,21 +96,36 @@ final class EvidenceTests {
                 image: sampleImage,
                 caption: "Initial mock proof"
             )
-            assert(saved.goalId == testGoalId, "Saved evidence goalId matches")
-            assert(saved.logId == testLogId, "Saved evidence logId matches")
+            let secondSaved = try await service.saveEvidence(
+                goalId: testGoalId,
+                logId: testLogId,
+                image: sampleImage,
+                caption: "Second proof"
+            )
+            assert(saved.goalId == testGoalId && saved.logId == testLogId, "Saved evidence remains scoped to its goal and log")
             
-            // Check fetching by goal and log
-            let fetched = service.fetchEvidence(forGoal: testGoalId, logId: testLogId)
-            assert(fetched != nil && fetched?.id == saved.id, "Fetch evidence for goal/log succeeds")
+            let fetched = service.fetchEvidenceItems(forGoal: testGoalId, logId: testLogId)
+            assert(fetched.count == 2, "A daily log can retain multiple evidence items")
+            assert(Set(fetched.map(\.id)) == Set([saved.id, secondSaved.id]), "Evidence lookup returns distinct proof items")
             
-            // Check loading image
             let loadedImage = await service.loadImage(for: saved)
             assert(loadedImage != nil, "Loaded image from local cache succeeds")
+            let foreignOwnerItem = EvidenceItem(
+                id: saved.id,
+                userId: "different_test_user",
+                goalId: testGoalId,
+                logId: testLogId
+            )
+            let foreignOwnerImage = await service.loadImage(for: foreignOwnerItem)
+            assert(foreignOwnerImage == nil, "Evidence cache never returns another user's photo")
             
-            // 4. Test Deletion
             try await service.deleteEvidence(saved)
-            let afterDelete = service.fetchEvidence(forGoal: testGoalId, logId: testLogId)
-            assert(afterDelete == nil, "Evidence removed from service metadata after deletion")
+            let afterDelete = service.fetchEvidenceItems(forGoal: testGoalId, logId: testLogId)
+            assert(afterDelete.count == 1 && afterDelete[0].id == secondSaved.id, "Deleting one proof preserves other evidence")
+            
+            await service.clearEvidence(for: testGoalId, logId: testLogId)
+            let afterClear = service.fetchEvidenceItems(forGoal: testGoalId, logId: testLogId)
+            assert(afterClear.isEmpty, "Clearing a daily log removes all attached evidence")
             
             let loadedAfterDelete = await service.loadImage(for: saved)
             assert(loadedAfterDelete == nil, "Evidence image binary deleted and cannot be loaded")

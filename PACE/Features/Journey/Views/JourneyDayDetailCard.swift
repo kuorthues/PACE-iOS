@@ -20,8 +20,6 @@ struct JourneyDayDetailCard: View {
     var onLogAction: ((Date) -> Void)? = nil
     var onViewEvidence: ((EvidenceItem) -> Void)? = nil
     
-    @ObservedObject private var evidenceService = EvidenceService.shared
-    @State private var evidenceImage: UIImage? = nil
     
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -67,12 +65,6 @@ struct JourneyDayDetailCard: View {
         }
         .padding(16)
         .paceCard()
-        .task(id: day.id) {
-            evidenceImage = nil
-            if let ev = day.evidence {
-                evidenceImage = await evidenceService.loadImage(for: ev)
-            }
-        }
     }
     
     // MARK: - Status Badge
@@ -201,78 +193,54 @@ struct JourneyDayDetailCard: View {
                     }
                 }
                 
-                // Evidence Section
-                if let evidence = day.evidence {
+                // Evidence photos
+                if !day.evidenceItems.isEmpty {
                     VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Text("VERIFIED EVIDENCE")
-                                .font(PACETypography.caption())
-                                .foregroundColor(PACEColor.accent)
-                            Spacer()
-                            if let caption = evidence.caption {
-                                Text(caption)
-                                    .font(PACETypography.caption())
-                                    .foregroundColor(PACEColor.textSecondary)
-                                    .lineLimit(1)
-                            }
-                        }
-                        
-                        Button(action: {
-                            onViewEvidence?(evidence)
-                        }) {
-                            HStack(spacing: 12) {
-                                // Square thumbnail
-                                ZStack {
-                                    Rectangle()
-                                        .fill(PACEColor.surfaceElevated)
-                                        .frame(width: 72, height: 72)
-                                        .overlay(
-                                            Rectangle().stroke(PACEColor.accent, lineWidth: 1)
-                                        )
-                                    
-                                    if let img = evidenceImage {
-                                        Image(uiImage: img)
-                                            .resizable()
-                                            .aspectRatio(contentMode: .fill)
-                                            .frame(width: 72, height: 72)
-                                            .clipped()
-                                    } else {
-                                        ProgressView()
-                                            .tint(PACEColor.accent)
+                        Text("VERIFIED EVIDENCE")
+                            .font(PACETypography.caption())
+                            .foregroundColor(PACEColor.accent)
+                        ForEach(day.evidenceItems) { evidence in
+                            Button {
+                                onViewEvidence?(evidence)
+                            } label: {
+                                HStack(spacing: 12) {
+                                    JourneyEvidencePhoto(evidence: evidence, size: 72)
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text("PHOTO PROOF ATTACHED")
+                                            .font(PACETypography.sectionHeader())
+                                            .foregroundColor(PACEColor.textPrimary)
+                                        Text(evidence.caption ?? evidence.formattedCreatedAt)
+                                            .font(PACETypography.caption())
+                                            .foregroundColor(PACEColor.textSecondary)
+                                        Text("TAP TO INSPECT HIGH-RES PROOF")
+                                            .font(.system(size: 10, weight: .bold))
+                                            .foregroundColor(PACEColor.accent)
                                     }
-                                }
-                                
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text("PHOTO PROOF ATTACHED")
-                                        .font(PACETypography.sectionHeader())
-                                        .foregroundColor(PACEColor.textPrimary)
-                                    
-                                    Text(evidence.formattedCreatedAt)
-                                        .font(PACETypography.caption())
-                                        .foregroundColor(PACEColor.textSecondary)
-                                    
-                                    Text("TAP TO INSPECT HIGH-RES PROOF")
-                                        .font(.system(size: 10, weight: .bold))
+                                    Spacer()
+                                    Image(systemName: "chevron.right")
                                         .foregroundColor(PACEColor.accent)
-                                        .padding(.top, 2)
                                 }
-                                
-                                Spacer()
-                                
-                                Image(systemName: "chevron.right")
-                                    .foregroundColor(PACEColor.accent)
-                                    .font(.system(size: 14, weight: .semibold))
+                                .padding(10)
+                                .background(PACEColor.surfaceElevated)
+                                .overlay(Rectangle().stroke(PACEColor.border, lineWidth: 1))
                             }
-                            .padding(10)
-                            .background(PACEColor.surfaceElevated)
-                            .overlay(
-                                Rectangle().stroke(PACEColor.border, lineWidth: 1)
-                            )
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("View photo evidence")
                         }
-                        .buttonStyle(.plain)
                     }
+                } else if day.state == .completedWithEvidence {
+                    HStack(spacing: 10) {
+                        Image(systemName: "photo")
+                            .font(.system(size: 24))
+                        Text("PHOTO EVIDENCE METADATA UNAVAILABLE")
+                            .font(PACETypography.caption())
+                    }
+                    .foregroundColor(PACEColor.textSecondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(12)
+                    .background(PACEColor.surfaceElevated)
+                    .overlay(Rectangle().stroke(PACEColor.border, lineWidth: 1))
                 }
-                
                 // Edit log button
                 PACEButton(
                     title: "EDIT SESSION RECORD",
@@ -541,6 +509,45 @@ struct JourneyDayDetailCard: View {
                         Rectangle().stroke(PACEColor.border, lineWidth: 1)
                     )
             }
+        }
+    }
+}
+
+struct JourneyEvidencePhoto: View {
+    let evidence: EvidenceItem
+    let size: CGFloat
+    @ObservedObject private var evidenceService = EvidenceService.shared
+    @State private var image: UIImage?
+    @State private var didLoad = false
+
+    var body: some View {
+        ZStack {
+            Rectangle().fill(PACEColor.surfaceElevated)
+            if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: size, height: size)
+                    .clipped()
+            } else if didLoad {
+                VStack(spacing: 3) {
+                    Image(systemName: "photo")
+                    Text("IMAGE\nUNAVAILABLE")
+                        .font(PACETypography.caption())
+                        .multilineTextAlignment(.center)
+                }
+                .foregroundColor(PACEColor.textSecondary)
+            } else {
+                ProgressView().tint(PACEColor.accent)
+            }
+        }
+        .frame(width: size, height: size)
+        .overlay(Rectangle().stroke(PACEColor.accent, lineWidth: 1))
+        .task(id: "\(evidence.userId)|\(evidence.id)") {
+            didLoad = false
+            image = nil
+            image = await evidenceService.loadImage(for: evidence)
+            didLoad = true
         }
     }
 }

@@ -2,12 +2,10 @@
 //  EvidenceService.swift
 //  PACE
 //
-//  Service managing photo evidence binaries and metadata:
-//  - Stores image binaries in Firebase Storage (scoped to users/{uid}/goals/{goalId}/evidence/{id}.jpg)
-//  - Stores metadata in Firestore (scoped to users/{uid}/goals/{goalId}/evidence/{id})
-//  - Local disk sandbox caching for reliable offline / local-test persistence
-//  - In-memory NSCache for instantaneous square thumbnail and detail rendering
-//  - Strictly prevents storing raw image bytes in Firestore
+// Service managing local photo evidence and its Firestore metadata:
+// - Keeps image files in UID- and goal-scoped app storage
+// - Caches images in memory for repeated thumbnail and detail rendering
+// - Never stores image bytes in Firestore
 //
 
 import SwiftUI
@@ -137,10 +135,17 @@ final class EvidenceService: ObservableObject {
         return local
     }
     
-    func fetchEvidence(forGoal goalId: String, logId: String) -> EvidenceItem? {
-        guard let uid = authoritativeUserId() else { return nil }
+    func fetchEvidenceItems(forGoal goalId: String, logId: String) -> [EvidenceItem] {
+        guard let uid = authoritativeUserId() else { return [] }
         let items = evidenceByGoal[goalId] ?? loadLocalMetadata(for: goalId, uid: uid)
-        return items.first { $0.logId == logId }
+        return items
+            .filter { $0.goalId == goalId && $0.logId == logId }
+            .sorted {
+                if $0.createdAt == $1.createdAt {
+                    return $0.id < $1.id
+                }
+                return $0.createdAt < $1.createdAt
+            }
     }
     
     // MARK: - Save / Upload Evidence
@@ -208,10 +213,9 @@ final class EvidenceService: ObservableObject {
         }
         #endif
         
-        // 4. Update local metadata cache
+        // 4. Append local metadata; multiple proofs may belong to one daily log.
         var currentItems = loadLocalMetadata(for: goalId, uid: uid)
-        currentItems.removeAll(where: { $0.logId == logId })
-        currentItems.insert(item, at: 0)
+        currentItems.append(item)
         saveLocalMetadata(currentItems, for: goalId, uid: uid)
         
         return item
@@ -221,7 +225,7 @@ final class EvidenceService: ObservableObject {
     
     func loadImage(for item: EvidenceItem) async -> UIImage? {
         // 1. Check memory cache
-        if let cached = memoryCache.object(forKey: item.id as NSString) {
+        if let cached = memoryCache.object(forKey: "\(item.userId)|\(item.id)" as NSString) {
             return cached
         }
         
@@ -230,7 +234,7 @@ final class EvidenceService: ObservableObject {
         if FileManager.default.fileExists(atPath: fileURL.path),
            let data = try? Data(contentsOf: fileURL),
            let image = UIImage(data: data) {
-            memoryCache.setObject(image, forKey: item.id as NSString)
+            memoryCache.setObject(image, forKey: "\(item.userId)|\(item.id)" as NSString)
             return image
         }
         
@@ -261,7 +265,7 @@ final class EvidenceService: ObservableObject {
         #endif
         
         // 2. Remove from memory and user-scoped disk
-        memoryCache.removeObject(forKey: item.id as NSString)
+        memoryCache.removeObject(forKey: "\(item.userId)|\(item.id)" as NSString)
         let fileURL = localFileURL(for: item, uid: item.userId)
         try? FileManager.default.removeItem(at: fileURL)
         
@@ -271,7 +275,7 @@ final class EvidenceService: ObservableObject {
         saveLocalMetadata(currentItems, for: item.goalId, uid: uid)
     }
     func clearEvidence(for goalId: String, logId: String) async {
-        if let item = fetchEvidence(forGoal: goalId, logId: logId) {
+        for item in fetchEvidenceItems(forGoal: goalId, logId: logId) {
             try? await deleteEvidence(item)
         }
     }

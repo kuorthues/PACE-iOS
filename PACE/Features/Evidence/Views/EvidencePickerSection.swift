@@ -2,12 +2,9 @@
 //  EvidencePickerSection.swift
 //  PACE
 //
-//  Evidence selection and preview component for daily progress logging.
-//  - PhotosPicker for selecting visual proof
-//  - Sharp 1:1 square preview container with zero corner radius
-//  - Optional caption input
-//  - Remove-before-save functionality
-//  - Handles existing evidence with delete/replace capability
+// Evidence selection and preview component for daily progress logging.
+// - Adds one compressed photo per save while retaining all existing proofs
+// - Displays each existing proof and supports removing it before save
 //
 
 import SwiftUI
@@ -16,13 +13,16 @@ import PhotosUI
 struct EvidencePickerSection: View {
     @Binding var selectedImage: UIImage?
     @Binding var caption: String
-    var existingEvidence: EvidenceItem?
-    var onRemoveExistingEvidence: (() -> Void)? = nil
+    var existingEvidenceItems: [EvidenceItem]
+    var onRemoveExistingEvidence: ((EvidenceItem) -> Void)? = nil
     
     @State private var photosPickerItem: PhotosPickerItem? = nil
-    @State private var isLoadingImage: Bool = false
+    @State private var isLoadingImage = false
     @State private var compressionSummary: String? = nil
-    @State private var existingLoadedImage: UIImage? = nil
+    @State private var loadedEvidenceImages: [String: UIImage] = [:]
+    @State private var missingEvidenceIds: Set<String> = []
+    
+    private let evidenceColumns = [GridItem(.adaptive(minimum: 112), spacing: 8)]
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -30,58 +30,59 @@ struct EvidencePickerSection: View {
                 Text("VISUAL PROOF (OPTIONAL)")
                     .font(PACETypography.caption())
                     .foregroundColor(PACEColor.textSecondary)
+                
                 Spacer()
-                if selectedImage != nil || existingEvidence != nil {
-                    Text("EVIDENCE ATTACHED")
+                
+                let photoCount = existingEvidenceItems.count + (selectedImage == nil ? 0 : 1)
+                if photoCount > 0 {
+                    Text("\(photoCount) \(photoCount == 1 ? "PHOTO" : "PHOTOS") ATTACHED")
                         .font(PACETypography.metricSmall())
                         .foregroundColor(PACEColor.accent)
+                        .accessibilityLabel("\(photoCount) photo evidence items attached")
                 }
             }
             
-            if let image = selectedImage ?? existingLoadedImage {
-                // Photo Preview with Sharp Zero-Radius Square Frame
+            if !existingEvidenceItems.isEmpty {
+                LazyVGrid(columns: evidenceColumns, alignment: .leading, spacing: 12) {
+                    ForEach(existingEvidenceItems) { item in
+                        existingPhoto(item)
+                    }
+                }
+            }
+            
+            if let selectedImage {
                 VStack(alignment: .leading, spacing: 10) {
                     ZStack(alignment: .topTrailing) {
-                        Image(uiImage: image)
+                        Image(uiImage: selectedImage)
                             .resizable()
-                            .aspectRatio(contentMode: .fill)
+                            .scaledToFill()
                             .frame(maxWidth: .infinity)
                             .frame(height: 220)
                             .clipped()
-                            .overlay(
-                                Rectangle()
-                                    .stroke(PACEColor.accent, lineWidth: 1)
-                            )
+                            .overlay(Rectangle().stroke(PACEColor.accent, lineWidth: 1))
                         
-                        // Remove / Discard Button
-                        Button(action: {
-                            removeSelectedPhoto()
-                        }) {
-                            HStack(spacing: 4) {
-                                Image(systemName: "trash.fill")
-                                Text("REMOVE")
-                            }
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(PACEColor.background)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(PACEColor.accent)
+                        Button(action: removeSelectedPhoto) {
+                            Label("REMOVE", systemImage: "trash.fill")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(PACEColor.background)
+                                .padding(.horizontal, 10)
+                                .frame(minHeight: 44)
+                                .background(PACEColor.accent)
                         }
                         .buttonStyle(.plain)
-                        .padding(8)
+                        .accessibilityLabel("Remove selected photo")
                     }
                     
-                    if let summary = compressionSummary {
+                    if let compressionSummary {
                         HStack(spacing: 4) {
                             Image(systemName: "arrow.down.circle")
                                 .foregroundColor(PACEColor.accent)
-                            Text(summary)
-                                .font(.system(size: 11, weight: .regular))
+                            Text(compressionSummary)
+                                .font(PACETypography.caption())
                                 .foregroundColor(PACEColor.textSecondary)
                         }
                     }
                     
-                    // Optional Caption Input
                     VStack(alignment: .leading, spacing: 4) {
                         Text("EVIDENCE CAPTION")
                             .font(PACETypography.caption())
@@ -91,17 +92,13 @@ struct EvidencePickerSection: View {
                             .font(PACETypography.body())
                             .padding(10)
                             .background(PACEColor.surface)
-                            .overlay(
-                                Rectangle()
-                                    .stroke(PACEColor.border, lineWidth: 1)
-                            )
+                            .overlay(Rectangle().stroke(PACEColor.border, lineWidth: 1))
                             .foregroundColor(PACEColor.textPrimary)
                     }
                 }
                 .padding(12)
                 .paceCard()
             } else {
-                // Empty Picker Trigger Button (Sharp Zero Corner Radius)
                 PhotosPicker(
                     selection: $photosPickerItem,
                     matching: .images,
@@ -112,14 +109,10 @@ struct EvidencePickerSection: View {
                             Rectangle()
                                 .fill(PACEColor.surfaceElevated)
                                 .frame(width: 44, height: 44)
-                                .overlay(
-                                    Rectangle()
-                                        .stroke(PACEColor.accent, lineWidth: 1)
-                                )
+                                .overlay(Rectangle().stroke(PACEColor.accent, lineWidth: 1))
                             
                             if isLoadingImage {
-                                ProgressView()
-                                    .tint(PACEColor.accent)
+                                ProgressView().tint(PACEColor.accent)
                             } else {
                                 Image(systemName: "photo.badge.plus")
                                     .font(.system(size: 18, weight: .bold))
@@ -128,37 +121,104 @@ struct EvidencePickerSection: View {
                         }
                         
                         VStack(alignment: .leading, spacing: 3) {
-                            Text("ATTACH PHOTO EVIDENCE")
+                            Text(existingEvidenceItems.isEmpty ? "ATTACH PHOTO EVIDENCE" : "ADD ANOTHER PHOTO")
                                 .font(PACETypography.metricSmall())
                                 .foregroundColor(PACEColor.textPrimary)
                             
-                            Text("Select square or landscape proof from photo library")
-                                .font(.system(size: 11, weight: .regular))
+                            Text("Choose a photo from your library; existing proofs remain attached.")
+                                .font(PACETypography.caption())
                                 .foregroundColor(PACEColor.textSecondary)
                         }
                         
-                        Spacer()
-                        
+                        Spacer(minLength: 0)
                         Image(systemName: "chevron.right")
                             .font(.system(size: 12, weight: .bold))
                             .foregroundColor(PACEColor.textSecondary)
                     }
                     .padding(12)
+                    .frame(minHeight: 68)
                     .paceCard(borderColor: PACEColor.border)
                 }
                 .buttonStyle(.plain)
+                .disabled(isLoadingImage)
+                .accessibilityLabel(existingEvidenceItems.isEmpty ? "Attach photo evidence" : "Add another photo")
             }
         }
         .onChange(of: photosPickerItem) { _, newItem in
-            guard let item = newItem else { return }
-            loadPickedItem(item)
+            guard let newItem else { return }
+            loadPickedItem(newItem)
         }
-        .task {
-            if let existing = existingEvidence, existingLoadedImage == nil {
-                caption = existing.caption ?? ""
-                existingLoadedImage = await EvidenceService.shared.loadImage(for: existing)
+        .task(id: existingEvidenceItems.map(\.id).joined(separator: "|")) {
+            for item in existingEvidenceItems
+            where loadedEvidenceImages[item.id] == nil && !missingEvidenceIds.contains(item.id) {
+                if let image = await EvidenceService.shared.loadImage(for: item) {
+                    loadedEvidenceImages[item.id] = image
+                } else {
+                    missingEvidenceIds.insert(item.id)
+                }
             }
         }
+    }
+    
+    @ViewBuilder
+    private func existingPhoto(_ item: EvidenceItem) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            GeometryReader { geometry in
+                ZStack(alignment: .topTrailing) {
+                    Group {
+                        if let image = loadedEvidenceImages[item.id] {
+                            Image(uiImage: image)
+                                .resizable()
+                                .scaledToFill()
+                        } else if missingEvidenceIds.contains(item.id) {
+                            Rectangle()
+                                .fill(PACEColor.surfaceElevated)
+                                .overlay {
+                                    VStack(spacing: 4) {
+                                        Image(systemName: "photo")
+                                        Text("PHOTO UNAVAILABLE")
+                                            .multilineTextAlignment(.center)
+                                    }
+                                    .font(PACETypography.caption())
+                                    .foregroundColor(PACEColor.textSecondary)
+                                    .padding(6)
+                                }
+                        } else {
+                            Rectangle()
+                                .fill(PACEColor.surfaceElevated)
+                                .overlay(ProgressView().tint(PACEColor.accent))
+                        }
+                    }
+                    .frame(width: geometry.size.width, height: geometry.size.height)
+                    .clipped()
+                    
+                    if let onRemoveExistingEvidence {
+                        Button {
+                            onRemoveExistingEvidence(item)
+                        } label: {
+                            Image(systemName: "trash.fill")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundColor(PACEColor.background)
+                                .frame(width: 44, height: 44)
+                                .background(PACEColor.accent)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Remove photo evidence")
+                    }
+                }
+                .overlay(Rectangle().stroke(PACEColor.border, lineWidth: 1))
+            }
+            .aspectRatio(1, contentMode: .fit)
+            
+            if let caption = item.caption, !caption.isEmpty {
+                Text(caption)
+                    .font(PACETypography.caption())
+                    .foregroundColor(PACEColor.textSecondary)
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .accessibilityElement(children: .contain)
     }
     
     private func loadPickedItem(_ item: PhotosPickerItem) {
@@ -170,11 +230,11 @@ struct EvidencePickerSection: View {
                    let uiImage = UIImage(data: data) {
                     if let compressed = ImageCompressor.compress(image: uiImage) {
                         let originalKb = compressed.originalByteCount / 1024
-                        let compKb = compressed.compressedByteCount / 1024
-                        self.compressionSummary = "Optimized for mobile: \(compKb) KB (saved \(max(0, originalKb - compKb)) KB)"
-                        self.selectedImage = compressed.image
+                        let compressedKb = compressed.compressedByteCount / 1024
+                        compressionSummary = "Optimized: \(compressedKb) KB (saved \(max(0, originalKb - compressedKb)) KB)"
+                        selectedImage = compressed.image
                     } else {
-                        self.selectedImage = uiImage
+                        selectedImage = uiImage
                     }
                 }
             } catch {
@@ -187,9 +247,6 @@ struct EvidencePickerSection: View {
         selectedImage = nil
         photosPickerItem = nil
         compressionSummary = nil
-        if existingEvidence != nil {
-            existingLoadedImage = nil
-            onRemoveExistingEvidence?()
-        }
+        caption = ""
     }
 }

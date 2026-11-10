@@ -172,7 +172,9 @@ struct GoalDetailView: View {
                                             .font(PACETypography.metricSmall())
                                             .foregroundColor(PACEColor.accent)
                                         
-                                        if log.evidenceId != nil || evidenceService.fetchEvidence(forGoal: goal.id, logId: log.dateString) != nil {
+                                        if log.evidenceId != nil
+                                            || !evidenceService.fetchEvidenceItems(forGoal: goal.id, logId: log.id).isEmpty
+                                            || (log.dateString != log.id && !evidenceService.fetchEvidenceItems(forGoal: goal.id, logId: log.dateString).isEmpty) {
                                             HStack(spacing: 3) {
                                                 Image(systemName: "camera.fill")
                                                 Text("PROOF")
