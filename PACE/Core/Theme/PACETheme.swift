@@ -12,6 +12,7 @@
 //
 
 import SwiftUI
+import UIKit
 
 // MARK: - PACE Design Tokens
 enum PACETheme {
@@ -69,6 +70,23 @@ enum PACETextStyle {
     /// Sub-label / helper
     static var labelSmall: Font {
         .system(size: 9, weight: .medium, design: .monospaced)
+    }
+
+    /// Pixel labels for short technical metadata; Dynamic Type scales from Caption.
+    static var pixelLabel: Font {
+        pixelFont(size: 12, relativeTo: .caption)
+    }
+
+    /// Slightly quieter pixel metadata, kept above the small-text threshold.
+    static var pixelMetadata: Font {
+        pixelFont(size: 11, relativeTo: .caption)
+    }
+
+    private static func pixelFont(size: CGFloat, relativeTo textStyle: Font.TextStyle) -> Font {
+        guard UIFont(name: "PixelifySans-Regular", size: size) != nil else {
+            return .system(textStyle, design: .monospaced).weight(.semibold)
+        }
+        return .custom("PixelifySans-Regular", size: size, relativeTo: textStyle)
     }
     
     /// Huge monospaced metric number (e.g. 43 DAYS REMAINING)

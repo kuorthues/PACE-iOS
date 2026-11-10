@@ -13,5 +13,9 @@
 			</array>
 		</dict>
 	</array>
+	<key>UIAppFonts</key>
+	<array>
+		<string>Fonts/PixelifySans.ttf</string>
+	</array>
 </dict>
 </plist>
