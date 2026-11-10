@@ -29,6 +29,7 @@ struct GoalsHomeView: View {
     @State private var navigateToDetail = false
     @State private var navigateToJourney = false
     @State private var selectedJourneyDay: JourneyDay? = nil
+    @ScaledMetric(relativeTo: .largeTitle) private var countdownFontSize: CGFloat = 64
     
     var body: some View {
         NavigationStack {
@@ -134,6 +135,8 @@ struct GoalsHomeView: View {
         let logs = logService.logsByGoal[goal.id] ?? []
         let metrics = GoalAnalytics.compute(goal: goal, logs: logs)
         let hasLoggedToday = logs.contains(where: { $0.dateString == DailyLog.dateFormatter.string(from: Date()) })
+        let deadline = deadlinePresentation(for: goal)
+        let todayStatus = hasLoggedToday ? "TODAY LOGGED" : (goal.isScheduledForToday ? "TODAY NOT LOGGED" : "TODAY · PLANNED REST")
         let evidenceList = evidenceService.evidenceByGoal[goal.id] ?? []
         let days = JourneyTimelineBuilder.buildTimeline(goal: goal, logs: logs, evidenceItems: evidenceList)
         
@@ -155,17 +158,25 @@ struct GoalsHomeView: View {
             }
             .buttonStyle(.plain)
             
-            // Huge #A7FF19 Days Remaining
-            VStack(alignment: .leading, spacing: 2) {
-                Text(String(format: "%02d", metrics.daysRemaining))
-                    .font(.system(size: 64, weight: .black, design: .monospaced))
+            // Deadline state: show the real target date before and after it passes.
+            VStack(alignment: .leading, spacing: 4) {
+                Text(deadline.value)
+                    .font(.system(size: countdownFontSize, weight: .black, design: .monospaced))
                     .foregroundColor(PACETheme.accent)
                     .tracking(1.0)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .accessibilityLabel(deadline.spokenValue)
                 
-                Text("DAYS REMAINING")
-                    .font(.system(size: 12, weight: .bold, design: .monospaced))
+                Text(deadline.label)
+                    .font(PACETextStyle.pixelLabel)
                     .foregroundColor(PACETheme.secondaryText)
-                    .tracking(2.0)
+                    .tracking(1.5)
+                
+                Text("TARGET: \(goal.formattedTargetDate.uppercased())")
+                    .font(PACETextStyle.pixelMetadata)
+                    .foregroundColor(PACETheme.secondaryText)
+                    .tracking(0.5)
             }
             
             // Today Status
@@ -174,15 +185,15 @@ struct GoalsHomeView: View {
                     .fill(hasLoggedToday ? PACETheme.accent : PACETheme.border)
                     .frame(width: 8, height: 8)
                 
-                Text(hasLoggedToday ? "TODAY LOGGED" : "TODAY NOT LOGGED")
-                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                Text(todayStatus)
+                    .font(PACETextStyle.pixelMetadata)
                     .foregroundColor(hasLoggedToday ? PACETheme.accent : PACETheme.secondaryText)
-                    .tracking(1.5)
+                    .tracking(1.0)
             }
             
             // Primary CTA
             PACEButton(
-                title: hasLoggedToday ? "EDIT TODAY'S LOG →" : "LOG TODAY →",
+                title: hasLoggedToday ? "EDIT TODAY'S LOG →" : "LOG TODAY'S PROGRESS →",
                 variant: .primary
             ) {
                 selectedGoalForLog = goal
@@ -192,12 +203,21 @@ struct GoalsHomeView: View {
             HStack(alignment: .top, spacing: 0) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("CURRENT STREAK")
-                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .font(PACETextStyle.pixelMetadata)
                         .foregroundColor(PACETheme.secondaryText)
                         .tracking(1.0)
-                    Text(String(format: "%02d", metrics.currentStreak))
-                        .font(.system(size: 22, weight: .black, design: .monospaced))
-                        .foregroundColor(PACETheme.primaryText)
+                    
+                    HStack(alignment: .firstTextBaseline, spacing: 5) {
+                        Image(systemName: "flame.fill")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundColor(PACETheme.accent)
+                            .accessibilityHidden(true)
+                        Text(String(format: "%02d", metrics.currentStreak))
+                            .font(.system(size: 22, weight: .black, design: .monospaced))
+                            .foregroundColor(PACETheme.primaryText)
+                    }
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("Current streak, \(metrics.currentStreak) days")
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 
@@ -208,7 +228,7 @@ struct GoalsHomeView: View {
                 
                 VStack(alignment: .leading, spacing: 4) {
                     Text("CONSISTENCY")
-                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .font(PACETextStyle.pixelMetadata)
                         .foregroundColor(PACETheme.secondaryText)
                         .tracking(1.0)
                     Text(String(format: "%.0f%%", metrics.consistencyPercentage))
@@ -224,7 +244,7 @@ struct GoalsHomeView: View {
                 
                 VStack(alignment: .leading, spacing: 4) {
                     Text("ACTIVE DAYS")
-                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .font(PACETextStyle.pixelMetadata)
                         .foregroundColor(PACETheme.secondaryText)
                         .tracking(1.0)
                     Text(String(format: "%02d", metrics.activeDays))
@@ -358,4 +378,41 @@ struct GoalsHomeView: View {
         )
         .padding(.top, 20)
     }
+}
+
+private func deadlinePresentation(for goal: PACEGoal) -> GoalDeadlinePresentation {
+    if goal.status == .completed {
+        return GoalDeadlinePresentation(value: "DONE", label: "GOAL COMPLETED", spokenValue: "Goal completed")
+    }
+    if goal.status == .archived {
+        return GoalDeadlinePresentation(value: "—", label: "GOAL ARCHIVED", spokenValue: "Goal archived")
+    }
+    
+    let calendar = Calendar.current
+    let today = calendar.startOfDay(for: Date())
+    let target = calendar.startOfDay(for: goal.targetDate)
+    let days = calendar.dateComponents([.day], from: today, to: target).day ?? 0
+    
+    if days > 0 {
+        return GoalDeadlinePresentation(
+            value: String(format: "%02d", days),
+            label: days == 1 ? "DAY LEFT" : "DAYS LEFT",
+            spokenValue: "\(days) days left"
+        )
+    }
+    if days < 0 {
+        let overdueDays = abs(days)
+        return GoalDeadlinePresentation(
+            value: String(format: "%02d", overdueDays),
+            label: overdueDays == 1 ? "DAY OVERDUE" : "DAYS OVERDUE",
+            spokenValue: "\(overdueDays) days overdue"
+        )
+    }
+    return GoalDeadlinePresentation(value: "00", label: "DUE TODAY", spokenValue: "Due today")
+}
+
+private struct GoalDeadlinePresentation {
+    let value: String
+    let label: String
+    let spokenValue: String
 }
