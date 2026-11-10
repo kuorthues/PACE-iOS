@@ -28,7 +28,6 @@ struct GoalsHomeView: View {
     @State private var selectedGoalForJourney: PACEGoal? = nil
     @State private var navigateToDetail = false
     @State private var navigateToJourney = false
-    @State private var selectedJourneyDay: JourneyDay? = nil
     @ScaledMetric(relativeTo: .largeTitle) private var countdownFontSize: CGFloat = 64
     
     var body: some View {
@@ -260,40 +259,9 @@ struct GoalsHomeView: View {
                 .fill(PACETheme.border)
                 .frame(height: 1)
             
-            // Current Journey Preview Section
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Text("CURRENT JOURNEY")
-                        .font(.system(size: 11, weight: .bold, design: .monospaced))
-                        .foregroundColor(PACETheme.secondaryText)
-                        .tracking(1.5)
-                    
-                    Spacer()
-                    
-                    Button(action: {
-                        selectedGoalForJourney = goal
-                        navigateToJourney = true
-                    }) {
-                        Text("VIEW →")
-                            .font(.system(size: 11, weight: .bold, design: .monospaced))
-                            .foregroundColor(PACETheme.accent)
-                            .tracking(1.5)
-                    }
-                    .buttonStyle(.plain)
-                }
-                
-                if !days.isEmpty {
-                    JourneyTimelineView(
-                        days: days,
-                        selectedDay: $selectedJourneyDay,
-                        isCompact: true
-                    )
-                    .frame(height: 80)
-                    .background(PACETheme.surface)
-                    .overlay(
-                        Rectangle().stroke(PACETheme.border, lineWidth: 1)
-                    )
-                }
+            CompactJourneyPreview(goal: goal, days: days) {
+                selectedGoalForJourney = goal
+                navigateToJourney = true
             }
             
             // Thin divider separating from secondary goals
