@@ -89,39 +89,15 @@ enum GoalAnalytics {
             consistency = min(100.0, max(0.0, (ratio * 100.0).rounded()))
         }
         
-        // 6. Current Streak (Walking backward from today)
-        var streak = 0
-        var checkDate = today
-        let todayString = DailyLog.dateFormatter.string(from: today)
-        let hasTodayLog = loggedDates.contains(todayString)
-        
-        if hasTodayLog {
-            streak += 1
-            checkDate = calendar.date(byAdding: .day, value: -1, to: checkDate)!
-        } else {
-            // Today not logged yet:
-            // If today is scheduled, it is still pending (does not break streak earned through yesterday)
-            // If today is a rest day, streak earned through yesterday continues
-            checkDate = calendar.date(byAdding: .day, value: -1, to: checkDate)!
-        }
-        
-        while checkDate >= earliestDate {
-            let dString = DailyLog.dateFormatter.string(from: checkDate)
-            let isLogged = loggedDates.contains(dString)
-            let isScheduled = goal.scheduledWeekdays.contains(calendar.component(.weekday, from: checkDate))
-            
-            if isLogged {
-                streak += 1
-            } else if isScheduled {
-                // A scheduled day was missed strictly before today -> streak broken
-                break
-            } else {
-                // Planned rest day: does NOT break streak
-            }
-            
-            guard let prev = calendar.date(byAdding: .day, value: -1, to: checkDate) else { break }
-            checkDate = prev
-        }
+        // 6. Current Streak (shared with WidgetKit so timeline entries stay accurate overnight)
+        let streak = PACEWidgetCurrentStreakCalculator.currentStreak(
+            loggedDateStrings: loggedDates,
+            scheduledWeekdays: goal.scheduledWeekdays,
+            historyStartDate: earliestDate,
+            asOf: asOf,
+            calendar: calendar,
+            dayKey: { DailyLog.dateFormatter.string(from: $0) }
+        )
         
         // 7. Longest Streak (Walking forward from earliestDate to today)
         var longestStreak = 0

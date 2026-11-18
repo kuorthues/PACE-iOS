@@ -72,6 +72,7 @@ struct GoalsHomeView: View {
             .navigationBarHidden(true)
             .task(id: authService.currentUser?.id) {
                 let userId = AuthService.shared.currentUser?.id
+                PACEWidgetSyncService.shared.markNeedsSync(for: userId)
                 sharedGoalService.startListening(for: userId)
                 invitationService.startListening(for: userId)
                 notificationService.startListening(for: userId)
@@ -79,7 +80,7 @@ struct GoalsHomeView: View {
                 for goal in goalService.goals {
                     _ = await logService.fetchLogs(for: goal.id)
                 }
-                PACEWidgetSyncService.shared.syncPrimaryGoal(goals: visibleSoloGoals, logsByGoal: logService.logsByGoal)
+                PACEWidgetSyncService.shared.requestSync()
                 await profileService.fetchSuggestions(limit: 3)
             }
             .task(id: sharedGoalService.goals) {
@@ -122,7 +123,7 @@ struct GoalsHomeView: View {
                     onFinish: {
                         Task {
                             await goalService.fetchActiveGoals()
-                            PACEWidgetSyncService.shared.syncPrimaryGoal(goals: visibleSoloGoals, logsByGoal: logService.logsByGoal)
+                            PACEWidgetSyncService.shared.requestSync()
                         }
                     }
                 )
@@ -131,7 +132,7 @@ struct GoalsHomeView: View {
                 LogProgressView(goal: goal) {
                     Task {
                         _ = await logService.fetchLogs(for: goal.id)
-                        PACEWidgetSyncService.shared.syncPrimaryGoal(goals: visibleSoloGoals, logsByGoal: logService.logsByGoal)
+                        PACEWidgetSyncService.shared.requestSync()
                     }
                 }
             }

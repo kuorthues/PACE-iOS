@@ -62,6 +62,7 @@ final class SharedGoalService: ObservableObject {
                         self.goals = []
                         self.hasLoaded = true
                         self.updateLogListeners(for: [])
+                        PACEWidgetSyncService.shared.requestSync()
                         return
                     }
                     let allGoals = (snapshot?.documents ?? []).compactMap {
@@ -78,6 +79,7 @@ final class SharedGoalService: ObservableObject {
                     self.hasLoaded = true
                     self.errorMessage = nil
                     self.updateLogListeners(for: self.goals)
+                    PACEWidgetSyncService.shared.requestSync()
                     for goal in self.goals where goal.ownerId == userId {
                         guard let sourceGoalId = goal.sourceGoalId else { continue }
                         Task { @MainActor in
@@ -116,6 +118,7 @@ final class SharedGoalService: ObservableObject {
                         if let error {
                             self.logsByGoal[goal.id] = []
                             self.errorMessage = "Shared progress could not sync: \(error.localizedDescription)"
+                            PACEWidgetSyncService.shared.requestSync()
                             return
                         }
                         self.logsByGoal[goal.id] = (snapshot?.documents ?? [])
@@ -124,6 +127,7 @@ final class SharedGoalService: ObservableObject {
                                 if $0.date == $1.date { return $0.createdAt < $1.createdAt }
                                 return $0.date > $1.date
                             }
+                        PACEWidgetSyncService.shared.requestSync()
                     }
                 }
         }
@@ -536,6 +540,7 @@ final class SharedGoalService: ObservableObject {
         guard Auth.auth().currentUser?.uid == uid else {
             throw AuthError.validation("Account changed while shared progress was saving.")
         }
+        PACEWidgetSyncService.shared.requestSync()
         return log
         #else
         throw AuthError.firebaseNotConfigured("Shared progress requires Firebase.")
@@ -562,6 +567,7 @@ final class SharedGoalService: ObservableObject {
             throw AuthError.validation("You can delete only your own shared progress.")
         }
         try await logRef.delete()
+        PACEWidgetSyncService.shared.requestSync()
         #else
         throw AuthError.firebaseNotConfigured("Shared progress requires Firebase.")
         #endif

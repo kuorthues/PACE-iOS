@@ -310,7 +310,7 @@ final class AuthService: ObservableObject {
         PublicProfileService.shared.clearInMemoryCache()
         SharedGoalService.shared.clearInMemoryCache()
         GoalInvitationService.shared.clearInMemoryCache()
-        PACEWidgetSyncService.shared.syncPrimaryGoal(goals: [], logsByGoal: [:])
+        PACEWidgetSyncService.shared.clearForSignedOut()
     }
 
     // MARK: - Logout

@@ -11,6 +11,9 @@
 		8323DCA330735C3700CE3597 /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = 8323DCA030735C3700CE3597 /* FirebaseCore */; };
 		8323DCA430735C3700CE3597 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 8323DCA130735C3700CE3597 /* FirebaseAuth */; };
 		8323DCA530735C3700CE3597 /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = 8323DCA230735C3700CE3597 /* FirebaseFirestore */; };
+		D050A0550000000000000003 /* PACEWidgetSnapshot.swift in PACE Sources */ = {isa = PBXBuildFile; fileRef = D050A0550000000000000001 /* PACEWidgetSnapshot.swift */; };
+		D050A0550000000000000004 /* PACEWidgetSnapshot.swift in Widget Sources */ = {isa = PBXBuildFile; fileRef = D050A0550000000000000001 /* PACEWidgetSnapshot.swift */; };
+		D050A0550000000000000005 /* PACEWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = W1D6E7010000000000000001 /* PACEWidgetExtension.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -30,6 +33,7 @@
 			dstPath = "";
 			dstSubfolderSpec = 13;
 			files = (
+				D050A0550000000000000005 /* PACEWidgetExtension.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -39,7 +43,8 @@
 /* Begin PBXFileReference section */
 		8323DC9A30735B9900CE3597 /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
 		8323DC9D30735CBE00CE3597 /* PACE.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PACE.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		W1D6E7010000000000000001 /* PACEWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; name = PACEWidgetExtension.appex; path = "/Users/maclab/Documents/kuorthues/PACE/build/Debug-iphoneos/PACEWidgetExtension.appex"; sourceTree = "<absolute>"; };
+		W1D6E7010000000000000001 /* PACEWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; name = PACEWidgetExtension.appex; path = PACEWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		D050A0550000000000000001 /* PACEWidgetSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PACEWidgetSnapshot.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -99,13 +104,23 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		D050A0550000000000000002 /* Shared */ = {
+			isa = PBXGroup;
+			children = (
+				D050A0550000000000000001 /* PACEWidgetSnapshot.swift */,
+			);
+			path = Shared;
+			sourceTree = "<group>";
+		};
 		833DD2DD3053D5B30013B699 = {
 			isa = PBXGroup;
 			children = (
 				833DD2E83053D5B30013B699 /* PACE */,
 				W1D6E7010000000000000002 /* PACEWidget */,
+				D050A0550000000000000002 /* Shared */,
 				8323DC9A30735B9900CE3597 /* GoogleService-Info.plist */,
 				8323DC9D30735CBE00CE3597 /* PACE.app */,
+				W1D6E7010000000000000001 /* PACEWidgetExtension.appex */,
 			);
 			sourceTree = "<group>";
 		};
@@ -222,6 +237,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D050A0550000000000000003 /* PACEWidgetSnapshot.swift in PACE Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -229,6 +245,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D050A0550000000000000004 /* PACEWidgetSnapshot.swift in Widget Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -433,6 +450,7 @@
 		W1D6E7010000000000000007 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = PACEWidget/PACEWidgetExtension.entitlements;
@@ -465,6 +483,7 @@
 		W1D6E7010000000000000008 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = PACEWidget/PACEWidgetExtension.entitlements;

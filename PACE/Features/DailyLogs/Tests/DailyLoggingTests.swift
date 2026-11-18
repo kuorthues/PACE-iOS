@@ -67,6 +67,32 @@ struct DailyLoggingTestSuite {
         assert(metrics1.activeDays == 4, "Every-day goal active days equals 4 (got \(metrics1.activeDays))")
         assert(metrics1.totalLoggedMinutes == 240, "Total minutes equals 240 (got \(metrics1.totalLoggedMinutes))")
         assert(metrics1.averageSessionMinutes == 60.0, "Average session equals 60.0 (got \(metrics1.averageSessionMinutes))")
+
+        let widgetSnapshot = PACEWidgetSnapshot(
+            goalId: everyDayGoal.id,
+            title: everyDayGoal.title,
+            kind: .solo,
+            createdAt: everyDayGoal.createdAt,
+            createdAtString: PACEWidgetSnapshot.dayKey(for: everyDayGoal.createdAt, calendar: calendar),
+            targetDate: everyDayGoal.targetDate,
+            historyStartDateString: PACEWidgetSnapshot.dayKey(
+                for: everyDayLogs.map(\.date).min() ?? everyDayGoal.createdAt,
+                calendar: calendar
+            ),
+            targetDateString: PACEWidgetSnapshot.dayKey(for: everyDayGoal.targetDate, calendar: calendar),
+            scheduledWeekdays: everyDayGoal.scheduledWeekdays,
+            loggedDateStrings: everyDayLogs.map(\.dateString)
+        )
+        let widgetToday = widgetSnapshot.metrics(for: today, calendar: calendar)
+        assert(widgetToday.currentStreak == metrics1.currentStreak, "Widget reuses the app's current-streak rule")
+        assert(widgetToday.isLoggedToday, "Widget recognizes a log for the current calendar day")
+        assert(widgetToday.daysRemaining == metrics1.daysRemaining, "Widget countdown matches calendar-day goal analytics")
+
+        let tomorrow = calendar.date(byAdding: .day, value: 1, to: today)!
+        let widgetTomorrow = widgetSnapshot.metrics(for: tomorrow, calendar: calendar)
+        assert(widgetTomorrow.currentStreak == metrics1.currentStreak, "Widget timeline keeps the earned streak at the next midnight")
+        assert(!widgetTomorrow.isLoggedToday, "Yesterday's log does not display as logged today")
+        assert(widgetTomorrow.daysRemaining == metrics1.daysRemaining - 1, "Widget countdown advances by one calendar day")
         
         // ---------------------------------------------------------------
         // TEST 2: Custom-Weekday Goal (Mon-Fri) with Planned Rest Days (Sat/Sun)
@@ -99,6 +125,75 @@ struct DailyLoggingTestSuite {
         assert(metricsRest.currentStreak == 2, "Planned rest days (Sat/Sun) do not break streak (Friday + Monday = streak 2, got \(metricsRest.currentStreak))")
         assert(metricsRest.missedScheduledDays == 0, "Planned rest days do not count as missed days (got \(metricsRest.missedScheduledDays))")
         assert(metricsRest.consistencyPercentage == 100.0, "Consistency is 100% since all scheduled days were logged (got \(metricsRest.consistencyPercentage)%)")
+
+        let weekdayWidgetSnapshot = PACEWidgetSnapshot(
+            goalId: weekdayGoal.id,
+            title: weekdayGoal.title,
+            kind: .solo,
+            createdAt: weekdayGoal.createdAt,
+            createdAtString: PACEWidgetSnapshot.dayKey(for: weekdayGoal.createdAt, calendar: calendar),
+            targetDate: weekdayGoal.targetDate,
+            historyStartDateString: PACEWidgetSnapshot.dayKey(for: logFriday.date, calendar: calendar),
+            targetDateString: PACEWidgetSnapshot.dayKey(for: weekdayGoal.targetDate, calendar: calendar),
+            scheduledWeekdays: weekdayGoal.scheduledWeekdays,
+            loggedDateStrings: [logFriday.dateString, logMonday.dateString]
+        )
+        let saturdayMetrics = weekdayWidgetSnapshot.metrics(
+            for: calendar.date(byAdding: .day, value: 1, to: friday)!,
+            calendar: calendar
+        )
+        assert(saturdayMetrics.isRestDay, "Widget shows rest day on an unscheduled weekday-goal date")
+        assert(saturdayMetrics.currentStreak == 1, "Widget streak bridges a scheduled rest day")
+
+        var dstCalendar = Calendar(identifier: .gregorian)
+        dstCalendar.timeZone = TimeZone(identifier: "America/Los_Angeles")!
+        var dstComponents = DateComponents()
+        dstComponents.year = 2026
+        dstComponents.month = 3
+        dstComponents.day = 7
+        let beforeDST = dstCalendar.startOfDay(for: dstCalendar.date(from: dstComponents)!)
+        let afterDST = dstCalendar.date(byAdding: .day, value: 1, to: beforeDST)!
+        let dstSnapshot = PACEWidgetSnapshot(
+            goalId: "dst-widget-goal",
+            title: "DST",
+            kind: .solo,
+            createdAt: beforeDST,
+            createdAtString: PACEWidgetSnapshot.dayKey(for: beforeDST, calendar: dstCalendar),
+            targetDate: afterDST,
+            historyStartDateString: PACEWidgetSnapshot.dayKey(for: beforeDST, calendar: dstCalendar),
+            targetDateString: PACEWidgetSnapshot.dayKey(for: afterDST, calendar: dstCalendar),
+            scheduledWeekdays: [1, 2, 3, 4, 5, 6, 7],
+            loggedDateStrings: []
+        )
+        assert(dstSnapshot.metrics(for: beforeDST, calendar: dstCalendar).daysRemaining == 1, "Widget countdown uses calendar days across daylight-saving time")
+
+        var sourceZone = Calendar(identifier: .gregorian)
+        sourceZone.timeZone = TimeZone(identifier: "Asia/Manila")!
+        var targetComponents = DateComponents()
+        targetComponents.year = 2026
+        targetComponents.month = 5
+        targetComponents.day = 20
+        let sourceTargetDate = sourceZone.date(from: targetComponents)!
+        var travelZone = Calendar(identifier: .gregorian)
+        travelZone.timeZone = TimeZone(identifier: "America/Los_Angeles")!
+        var travelTodayComponents = DateComponents()
+        travelTodayComponents.year = 2026
+        travelTodayComponents.month = 5
+        travelTodayComponents.day = 19
+        let travelToday = travelZone.startOfDay(for: travelZone.date(from: travelTodayComponents)!)
+        let timeZoneSnapshot = PACEWidgetSnapshot(
+            goalId: "time-zone-widget-goal",
+            title: "TIME ZONE",
+            kind: .solo,
+            createdAt: sourceTargetDate,
+            createdAtString: PACEWidgetSnapshot.dayKey(for: sourceTargetDate, calendar: sourceZone),
+            targetDate: sourceTargetDate,
+            historyStartDateString: "2026-05-01",
+            targetDateString: PACEWidgetSnapshot.dayKey(for: sourceTargetDate, calendar: sourceZone),
+            scheduledWeekdays: [1, 2, 3, 4, 5, 6, 7],
+            loggedDateStrings: []
+        )
+        assert(timeZoneSnapshot.metrics(for: travelToday, calendar: travelZone).daysRemaining == 1, "Date-only target remains May 20 after changing time zones")
         
         // ---------------------------------------------------------------
         // TEST 3: Broken Streak After Missed Scheduled Day

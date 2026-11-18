@@ -51,10 +51,31 @@ enum PACETab: String, CaseIterable, Identifiable {
     }
 }
 
+private enum MainTabWidgetSheet: Identifiable {
+    case soloGoal(PACEGoal)
+    case soloLog(PACEGoal)
+    case sharedGoal(SharedGoal)
+    case sharedLog(SharedGoal)
+
+    var id: String {
+        switch self {
+        case .soloGoal(let goal): return "solo-goal-\(goal.id)"
+        case .soloLog(let goal): return "solo-log-\(goal.id)"
+        case .sharedGoal(let goal): return "shared-goal-\(goal.id)"
+        case .sharedLog(let goal): return "shared-log-\(goal.id)"
+        }
+    }
+}
+
 struct MainTabView: View {
+    @ObservedObject private var authService = AuthService.shared
+    @EnvironmentObject private var widgetNavigationCoordinator: PACEWidgetNavigationCoordinator
+    @Environment(\.scenePhase) private var scenePhase
+
     @State private var selectedTab: PACETab = .goals
-    @State private var deepLinkedGoal: PACEGoal? = nil
-    @State private var deepLinkedLogGoal: PACEGoal? = nil
+    @State private var deepLinkSheet: MainTabWidgetSheet?
+    @State private var deepLinkAlertMessage: String?
+    @State private var resolvingRequestId: UUID?
     
     var body: some View {
         Group {
@@ -73,58 +94,138 @@ struct MainTabView: View {
             customTabBar
         }
         .background(PACEColor.background.ignoresSafeArea())
-        .sheet(item: $deepLinkedGoal) { goal in
+        .sheet(item: $deepLinkSheet) { destination in
             NavigationStack {
-                GoalDetailView(goal: goal)
+                deepLinkSheetContent(destination)
             }
         }
-        .sheet(item: $deepLinkedLogGoal) { goal in
-            LogProgressView(goal: goal) {
-                Task {
-                    await GoalService.shared.fetchActiveGoals()
-                    PACEWidgetSyncService.shared.syncPrimaryGoal(
-                        goals: GoalService.shared.goals,
-                        logsByGoal: DailyLogService.shared.logsByGoal
-                    )
-                }
+        .task(id: authService.currentUser?.id) {
+            await processPendingWidgetLink()
+        }
+        .onChange(of: widgetNavigationCoordinator.pendingRequest?.id) { _, _ in
+            Task { await processPendingWidgetLink() }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                refreshWidgetData()
             }
         }
-        .onOpenURL { url in
-            handleDeepLink(url: url)
+        .alert(
+            "PACE",
+            isPresented: Binding(
+                get: { deepLinkAlertMessage != nil },
+                set: { if !$0 { deepLinkAlertMessage = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) { deepLinkAlertMessage = nil }
+        } message: {
+            Text(deepLinkAlertMessage ?? "This goal is no longer available.")
         }
     }
-    
-    private func handleDeepLink(url: URL) {
-        guard url.scheme == "pace" else { return }
-        
-        let host = url.host ?? url.path
-        let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
-        let queryItems = components?.queryItems ?? []
-        let goalId = queryItems.first(where: { $0.name == "id" || $0.name == "goalId" })?.value
-        
-        selectedTab = .goals
-        
-        let isLogDeepLink = host == "log" || url.path == "/log"
-        let isGoalDeepLink = host == "goal" || url.path == "/goal"
-        guard let goalId, isLogDeepLink || isGoalDeepLink else { return }
 
-        func present(_ goal: PACEGoal) {
-            if isLogDeepLink {
-                deepLinkedLogGoal = goal
-            } else {
-                deepLinkedGoal = goal
-            }
+    @MainActor
+    private func processPendingWidgetLink() async {
+        guard let request = widgetNavigationCoordinator.pendingRequest else { return }
+        selectedTab = .goals
+
+        switch request.destination {
+        case .goals:
+            widgetNavigationCoordinator.consume(requestId: request.id)
+            return
+        case .invalid:
+            deepLinkAlertMessage = "This PACE link is invalid or the goal is no longer available."
+            widgetNavigationCoordinator.consume(requestId: request.id)
+            return
+        case .goal, .log:
+            break
         }
 
-        if let found = GoalService.shared.goals.first(where: { $0.id == goalId }) {
-            present(found)
+        guard authService.isAuthenticated,
+              let accountId = authService.currentUser?.id,
+              resolvingRequestId != request.id else { return }
+
+        resolvingRequestId = request.id
+        defer {
+            if resolvingRequestId == request.id { resolvingRequestId = nil }
+        }
+
+        let destinationSheet: MainTabWidgetSheet?
+        switch request.destination {
+        case .goal(let goalId, .solo):
+            let goal = await resolveSoloGoal(id: goalId)
+            destinationSheet = goal.map(MainTabWidgetSheet.soloGoal)
+        case .log(let goalId, .solo):
+            let goal = await resolveSoloGoal(id: goalId)
+            destinationSheet = goal.map(MainTabWidgetSheet.soloLog)
+        case .goal(let goalId, .shared):
+            let goal = await resolveSharedGoal(id: goalId, accountId: accountId)
+            destinationSheet = goal.map(MainTabWidgetSheet.sharedGoal)
+        case .log(let goalId, .shared):
+            let goal = await resolveSharedGoal(id: goalId, accountId: accountId)
+            destinationSheet = goal.map(MainTabWidgetSheet.sharedLog)
+        case .goals, .invalid:
+            destinationSheet = nil
+        }
+
+        guard !Task.isCancelled,
+              AuthService.shared.currentUser?.id == accountId else { return }
+        if let destinationSheet {
+            deepLinkSheet = destinationSheet
         } else {
-            Task {
-                await GoalService.shared.fetchActiveGoals()
-                if let found = GoalService.shared.goals.first(where: { $0.id == goalId }) {
-                    present(found)
+            deepLinkAlertMessage = "This goal is no longer available to your account."
+        }
+        widgetNavigationCoordinator.consume(requestId: request.id)
+    }
+
+    private func resolveSoloGoal(id: String) async -> PACEGoal? {
+        var goal = await GoalService.shared.fetchGoal(id: id)
+        if goal == nil {
+            await GoalService.shared.fetchActiveGoals()
+            goal = await GoalService.shared.fetchGoal(id: id)
+        }
+        guard let goal,
+              goal.status == .active,
+              goal.userId == AuthService.shared.currentUser?.id else { return nil }
+        return goal
+    }
+
+    private func resolveSharedGoal(id: String, accountId: String) async -> SharedGoal? {
+        guard let goal = await SharedGoalService.shared.fetchGoal(id: id),
+              goal.status == .active,
+              goal.memberIds.contains(accountId) else { return nil }
+        return goal
+    }
+
+    @ViewBuilder
+    private func deepLinkSheetContent(_ destination: MainTabWidgetSheet) -> some View {
+        switch destination {
+        case .soloGoal(let goal):
+            GoalDetailView(goal: goal)
+        case .soloLog(let goal):
+            LogProgressView(goal: goal) {
+                Task {
+                    _ = await DailyLogService.shared.fetchLogs(for: goal.id)
+                    PACEWidgetSyncService.shared.requestSync()
                 }
             }
+        case .sharedGoal(let goal):
+            SharedGoalDetailView(goal: goal)
+        case .sharedLog(let goal):
+            SharedGoalDetailView(goal: goal, openLoggingOnAppear: true)
+        }
+    }
+
+    private func refreshWidgetData() {
+        guard authService.isAuthenticated else {
+            PACEWidgetSyncService.shared.clearForSignedOut()
+            return
+        }
+        Task {
+            await GoalService.shared.fetchActiveGoals()
+            for goal in GoalService.shared.goals {
+                _ = await DailyLogService.shared.fetchLogs(for: goal.id)
+            }
+            PACEWidgetSyncService.shared.requestSync()
         }
     }
     

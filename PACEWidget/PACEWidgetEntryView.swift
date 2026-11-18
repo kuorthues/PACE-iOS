@@ -1,239 +1,261 @@
-//
-//  PACEWidgetEntryView.swift
-//  PACEWidget
-//
-//  Widget view rendering systemSmall and systemMedium goal widgets.
-//  Strictly adheres to PACE visual identity:
-//  - #A7FF19 accent
-//  - Black/dark surfaces with sharp 1px borders
-//  - System monospaced metrics
-//  - Deep-linking to Goal Detail and Log Progress
-//
-
-import WidgetKit
 import SwiftUI
+import WidgetKit
 
 struct PACEWidgetEntryView: View {
     let entry: PACEWidgetEntry
-    @Environment(\.widgetFamily) var family
-    
-    // PACE Design Tokens (WidgetKit-isolated)
-    private let accentColor = Color(red: 167 / 255.0, green: 255 / 255.0, blue: 25 / 255.0)
-    private let surfaceColor = Color(red: 18 / 255.0, green: 18 / 255.0, blue: 18 / 255.0)
-    private let surfaceElevated = Color(red: 28 / 255.0, green: 28 / 255.0, blue: 30 / 255.0)
-    private let borderColor = Color(red: 44 / 255.0, green: 44 / 255.0, blue: 46 / 255.0)
-    private let textSecondary = Color(red: 142 / 255.0, green: 142 / 255.0, blue: 147 / 255.0)
-    
+
+    @Environment(\.widgetFamily) private var family
+
+    private let accent = Color(red: 167.0 / 255.0, green: 1.0, blue: 25.0 / 255.0)
+    private let muted = Color(red: 142.0 / 255.0, green: 142.0 / 255.0, blue: 147.0 / 255.0)
+    private let border = Color(red: 48.0 / 255.0, green: 48.0 / 255.0, blue: 50.0 / 255.0)
+
     var body: some View {
         Group {
-            if let snapshot = entry.snapshot {
-                switch family {
-                case .systemSmall:
-                    smallView(snapshot: snapshot)
-                        .widgetURL(URL(string: "pace://goal?id=\(snapshot.goalId)"))
-                case .systemMedium:
+            if let snapshot = entry.snapshot,
+               entry.state == .ready || entry.state == .preview {
+                if family == .systemMedium {
                     mediumView(snapshot: snapshot)
-                        .widgetURL(URL(string: "pace://goal?id=\(snapshot.goalId)"))
-                default:
+                } else {
                     smallView(snapshot: snapshot)
-                        .widgetURL(URL(string: "pace://goal?id=\(snapshot.goalId)"))
                 }
             } else {
-                noGoalView
-                    .widgetURL(URL(string: "pace://goals"))
+                emptyState
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        .foregroundStyle(.white)
+        .widgetURL(destinationURL)
+        .accessibilityElement(children: .combine)
     }
-    
-    // MARK: - System Small View
-    
+
     private func smallView(snapshot: PACEWidgetSnapshot) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            // Header Row: PACE branding + Today Indicator
-            HStack {
-                Text("PACE")
-                    .font(.system(size: 11, weight: .black, design: .monospaced))
-                    .foregroundColor(accentColor)
-                    .tracking(1.0)
-                
-                Spacer()
-                
-                // Status dot
-                Rectangle()
-                    .fill(snapshot.hasLoggedToday ? accentColor : (snapshot.isScheduledToday ? Color.yellow : borderColor))
-                    .frame(width: 8, height: 8)
-            }
-            
-            // Goal Title
-            Text(snapshot.goalTitle.uppercased())
-                .font(.system(size: 13, weight: .bold, design: .default))
-                .foregroundColor(.white)
+        let metrics = snapshot.metrics(for: entry.date)
+
+        return VStack(alignment: .leading, spacing: 7) {
+            brandHeader(kind: snapshot.kind)
+
+            Text(snapshot.title.uppercased())
+                .font(.system(.headline, design: .default, weight: .bold))
                 .lineLimit(2)
-                .minimumScaleFactor(0.85)
+                .minimumScaleFactor(0.78)
                 .frame(maxWidth: .infinity, alignment: .leading)
-            
-            Spacer(minLength: 2)
-            
-            // Metrics Row: Days Remaining + Streak
-            HStack(spacing: 8) {
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(String(format: "%02d", snapshot.daysRemaining))
-                        .font(.system(size: 20, weight: .bold, design: .monospaced))
-                        .foregroundColor(.white)
-                    Text("DAYS")
-                        .font(.system(size: 9, weight: .medium, design: .monospaced))
-                        .foregroundColor(textSecondary)
-                }
-                
-                Spacer()
-                
-                VStack(alignment: .trailing, spacing: 1) {
-                    Text(String(format: "%02d", snapshot.currentStreak))
-                        .font(.system(size: 20, weight: .bold, design: .monospaced))
-                        .foregroundColor(snapshot.currentStreak > 0 ? accentColor : .white)
-                    Text("STREAK")
-                        .font(.system(size: 9, weight: .medium, design: .monospaced))
-                        .foregroundColor(textSecondary)
-                }
-            }
-            
-            // Bottom Today Status Badge
-            HStack(spacing: 4) {
-                if snapshot.hasLoggedToday {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 8, weight: .bold))
-                    Text("LOGGED TODAY")
-                } else if snapshot.isScheduledToday {
-                    Image(systemName: "clock")
-                        .font(.system(size: 8, weight: .bold))
-                    Text("PROOF PENDING")
+
+            Spacer(minLength: 0)
+
+            HStack(alignment: .lastTextBaseline, spacing: 5) {
+                if metrics.isOverdue {
+                    Text("\(metrics.daysOverdue)")
+                        .font(.system(.title3, design: .monospaced, weight: .bold))
+                        .foregroundStyle(accent)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
                 } else {
-                    Text("REST DAY")
+                    Text("\(metrics.daysRemaining)")
+                        .font(.system(.largeTitle, design: .monospaced, weight: .bold))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.65)
                 }
-            }
-            .font(.system(size: 9, weight: .bold, design: .monospaced))
-            .foregroundColor(snapshot.hasLoggedToday ? .black : (snapshot.isScheduledToday ? accentColor : textSecondary))
-            .padding(.horizontal, 6)
-            .padding(.vertical, 3)
-            .frame(maxWidth: .infinity)
-            .background(snapshot.hasLoggedToday ? accentColor : surfaceElevated)
-            .overlay(
-                Rectangle().stroke(snapshot.hasLoggedToday ? accentColor : borderColor, lineWidth: 1)
-            )
-        }
-        .padding(12)
-    }
-    
-    // MARK: - System Medium View
-    
-    private func mediumView(snapshot: PACEWidgetSnapshot) -> some View {
-        HStack(spacing: 12) {
-            // Left Column: Goal info & Today Status
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    Text("PACE")
-                        .font(.system(size: 11, weight: .black, design: .monospaced))
-                        .foregroundColor(accentColor)
-                        .tracking(1.0)
-                    
-                    Spacer()
-                    
-                    Text("TARGET: \(snapshot.targetDateString.uppercased())")
-                        .font(.system(size: 9, weight: .medium, design: .monospaced))
-                        .foregroundColor(textSecondary)
-                }
-                
-                Text(snapshot.goalTitle.uppercased())
-                    .font(.system(size: 15, weight: .bold, design: .default))
-                    .foregroundColor(.white)
+
+                Text(countdownCaption(metrics))
+                    .font(.system(.caption2, design: .monospaced, weight: .medium))
+                    .foregroundStyle(muted)
                     .lineLimit(2)
-                    .minimumScaleFactor(0.85)
-                
-                Spacer()
-                
-                // Status Box with Deep Link to Log
-                Link(destination: URL(string: "pace://log?goalId=\(snapshot.goalId)")!) {
-                    HStack(spacing: 6) {
-                        Image(systemName: snapshot.hasLoggedToday ? "checkmark.circle.fill" : "camera.fill")
-                            .font(.system(size: 10, weight: .bold))
-                        
-                        Text(snapshot.hasLoggedToday ? "PROOF VERIFIED TODAY" : (snapshot.isScheduledToday ? "LOCK IN TODAY'S PROOF" : "REST DAY"))
-                            .font(.system(size: 10, weight: .bold, design: .monospaced))
-                            .lineLimit(1)
-                    }
-                    .foregroundColor(snapshot.hasLoggedToday ? .black : (snapshot.isScheduledToday ? .black : textSecondary))
+                    .minimumScaleFactor(0.75)
+            }
+
+            statusLine(metrics, compact: true)
+        }
+        .padding(2)
+    }
+
+    private func mediumView(snapshot: PACEWidgetSnapshot) -> some View {
+        let metrics = snapshot.metrics(for: entry.date)
+
+        return HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 7) {
+                brandHeader(kind: snapshot.kind)
+
+                Text(snapshot.title.uppercased())
+                    .font(.system(.title3, design: .default, weight: .bold))
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.75)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                Spacer(minLength: 2)
+
+                statusLine(metrics, compact: false)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 6)
-                    .frame(maxWidth: .infinity)
-                    .background(snapshot.hasLoggedToday ? accentColor : (snapshot.isScheduledToday ? accentColor : surfaceElevated))
-                    .overlay(
-                        Rectangle().stroke(snapshot.isScheduledToday || snapshot.hasLoggedToday ? accentColor : borderColor, lineWidth: 1)
-                    )
-                }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(metrics.isProofPending ? accent : Color.clear)
+                    .overlay(Rectangle().stroke(metrics.isProofPending ? accent : border, lineWidth: 1))
+                    .foregroundStyle(metrics.isProofPending ? .black : .white)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            
-            // Vertical Divider
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+
             Rectangle()
-                .fill(borderColor)
+                .fill(border)
                 .frame(width: 1)
-            
-            // Right Column: Key Metrics (Days Remaining, Streak, Time)
+
             VStack(alignment: .leading, spacing: 10) {
-                // Days Remaining
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(String(format: "%02d", snapshot.daysRemaining))
-                        .font(.system(size: 26, weight: .bold, design: .monospaced))
-                        .foregroundColor(.white)
-                    Text("DAYS REMAINING")
-                        .font(.system(size: 9, weight: .medium, design: .monospaced))
-                        .foregroundColor(textSecondary)
+                VStack(alignment: .leading, spacing: 1) {
+                    if metrics.isOverdue {
+                        Text("\(metrics.daysOverdue)")
+                            .font(.system(.title, design: .monospaced, weight: .bold))
+                            .foregroundStyle(accent)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                        Text("DAYS OVERDUE")
+                            .font(.system(.caption2, design: .monospaced, weight: .medium))
+                            .foregroundStyle(muted)
+                    } else {
+                        Text("\(metrics.daysRemaining)")
+                            .font(.system(.largeTitle, design: .monospaced, weight: .bold))
+                            .foregroundStyle(.white)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.65)
+                        Text(metrics.daysRemaining == 0 ? "DUE TODAY" : "DAYS LEFT")
+                            .font(.system(.caption2, design: .monospaced, weight: .medium))
+                            .foregroundStyle(muted)
+                    }
                 }
-                
-                // Streak
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(String(format: "%02d", snapshot.currentStreak))
-                        .font(.system(size: 20, weight: .bold, design: .monospaced))
-                        .foregroundColor(snapshot.currentStreak > 0 ? accentColor : .white)
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("\(metrics.currentStreak)")
+                        .font(.system(.title2, design: .monospaced, weight: .bold))
+                        .foregroundStyle(metrics.currentStreak > 0 ? accent : .white)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
                     Text("DAY STREAK")
-                        .font(.system(size: 9, weight: .medium, design: .monospaced))
-                        .foregroundColor(textSecondary)
+                        .font(.system(.caption2, design: .monospaced, weight: .medium))
+                        .foregroundStyle(muted)
                 }
+
+                Text("TARGET \(snapshot.formattedTargetDate)")
+                    .font(.system(.caption2, design: .monospaced, weight: .medium))
+                    .foregroundStyle(muted)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
             }
-            .frame(width: 100, alignment: .leading)
+            .frame(width: 112, alignment: .leading)
         }
-        .padding(14)
+        .padding(2)
     }
-    
-    // MARK: - No Goal View
-    
-    private var noGoalView: some View {
-        VStack(spacing: 8) {
-            HStack {
-                Text("PACE")
-                    .font(.system(size: 11, weight: .black, design: .monospaced))
-                    .foregroundColor(accentColor)
-                    .tracking(1.0)
-                Spacer()
+
+    private func brandHeader(kind: PACEWidgetGoalKind) -> some View {
+        HStack(spacing: 6) {
+            Text("PACE")
+                .font(.system(.caption, design: .monospaced, weight: .black))
+                .tracking(1.2)
+                .foregroundStyle(accent)
+
+            if kind == .shared {
+                Text("TOGETHER")
+                    .font(.system(.caption2, design: .monospaced, weight: .medium))
+                    .foregroundStyle(muted)
             }
-            
-            Spacer()
-            
-            Image(systemName: "target")
-                .font(.system(size: family == .systemSmall ? 22 : 28))
-                .foregroundColor(accentColor)
-            
-            Text("NO ACTIVE GOAL")
-                .font(.system(size: family == .systemSmall ? 11 : 13, weight: .bold, design: .default))
-                .foregroundColor(.white)
-            
-            Text("Tap to launch PACE and set your target objective.")
-                .font(.system(size: 9, weight: .regular))
-                .foregroundColor(textSecondary)
-                .multilineTextAlignment(.center)
-            
-            Spacer()
+
+            Spacer(minLength: 0)
         }
-        .padding(12)
+        .accessibilityLabel(kind == .shared ? "PACE Together" : "PACE")
+    }
+
+    @ViewBuilder
+    private func statusLine(_ metrics: PACEWidgetMetrics, compact: Bool) -> some View {
+        HStack(spacing: 5) {
+            Circle()
+                .fill(metrics.isProofPending && !compact ? .black : (metrics.isLoggedToday || metrics.isProofPending ? accent : muted))
+                .frame(width: 6, height: 6)
+                .accessibilityHidden(true)
+
+            Text(statusCaption(metrics, compact: compact))
+                .font(.system(.caption2, design: .monospaced, weight: .bold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+        }
+        .foregroundStyle(metrics.isLoggedToday ? accent : (metrics.isProofPending ? (compact ? accent : .black) : muted))
+    }
+
+    private var emptyState: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            brandHeader(kind: .solo)
+            Spacer(minLength: 0)
+            Text(emptyTitle)
+                .font(.system(.headline, design: .default, weight: .bold))
+                .foregroundStyle(.white)
+                .lineLimit(2)
+                .minimumScaleFactor(0.75)
+            Text(emptyDetail)
+                .font(.system(.caption2, design: .monospaced, weight: .medium))
+                .foregroundStyle(muted)
+                .lineLimit(family == .systemSmall ? 3 : 2)
+                .minimumScaleFactor(0.75)
+            Spacer(minLength: 0)
+        }
+        .padding(2)
+    }
+
+    private var emptyTitle: String {
+        switch entry.state {
+        case .preview: return "PACE"
+        case .ready: return "GOAL UNAVAILABLE"
+        case .noActiveGoal: return "NO ACTIVE GOAL"
+        case .signedOut: return "SIGN IN TO CONTINUE"
+        case .needsSync: return "OPEN PACE TO SYNC"
+        case .goalUnavailable: return "GOAL UNAVAILABLE"
+        case .appGroupUnavailable: return "WIDGET DATA UNAVAILABLE"
+        }
+    }
+
+    private var emptyDetail: String {
+        switch entry.state {
+        case .preview: return "PREVIEW"
+        case .ready, .goalUnavailable: return "EDIT WIDGET TO SELECT ANOTHER GOAL"
+        case .noActiveGoal: return "OPEN PACE TO CREATE A GOAL"
+        case .signedOut: return "OPEN PACE TO SIGN IN"
+        case .needsSync: return "OPEN PACE TO SYNC YOUR GOALS"
+        case .appGroupUnavailable: return "OPEN PACE TO SYNC YOUR GOALS"
+        }
+    }
+
+    private var destinationURL: URL? {
+        guard let snapshot = entry.snapshot,
+              entry.state == .ready else {
+            return Self.url(host: "goals")
+        }
+        let metrics = snapshot.metrics(for: entry.date)
+        let shouldOpenLog = family == .systemMedium && metrics.isProofPending
+        return Self.url(
+            host: shouldOpenLog ? "log" : "goal",
+            goalId: snapshot.goalId,
+            kind: snapshot.kind
+        )
+    }
+
+    private static func url(host: String, goalId: String? = nil, kind: PACEWidgetGoalKind? = nil) -> URL? {
+        var components = URLComponents()
+        components.scheme = "pace"
+        components.host = host
+        if let goalId {
+            components.queryItems = [
+                URLQueryItem(name: host == "log" ? "goalId" : "id", value: goalId),
+                URLQueryItem(name: "kind", value: kind?.rawValue)
+            ]
+        }
+        return components.url
+    }
+
+    private func countdownCaption(_ metrics: PACEWidgetMetrics) -> String {
+        if metrics.isOverdue { return "DAYS OVERDUE" }
+        return metrics.daysRemaining == 0 ? "DUE TODAY" : "DAYS REMAINING"
+    }
+
+    private func statusCaption(_ metrics: PACEWidgetMetrics, compact: Bool) -> String {
+        if entry.state == .preview { return "PREVIEW" }
+        if metrics.isLoggedToday { return compact ? "LOGGED TODAY" : "LOGGED TODAY · OPEN GOAL" }
+        if metrics.isProofPending { return compact ? "PROOF PENDING" : "LOG TODAY" }
+        return "REST DAY"
     }
 }

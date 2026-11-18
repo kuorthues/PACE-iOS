@@ -70,10 +70,7 @@ final class GoalService: ObservableObject {
     }
     
     private func syncWidget() {
-        PACEWidgetSyncService.shared.syncPrimaryGoal(
-            goals: self.goals,
-            logsByGoal: DailyLogService.shared.logsByGoal
-        )
+        PACEWidgetSyncService.shared.requestSync()
     }
     
     // MARK: - Fetch Active Goals

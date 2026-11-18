@@ -11,6 +11,7 @@ import SwiftUI
 
 struct RootView: View {
     @StateObject private var authService = AuthService.shared
+    @StateObject private var widgetNavigationCoordinator = PACEWidgetNavigationCoordinator.shared
     
     var body: some View {
         Group {
@@ -19,6 +20,10 @@ struct RootView: View {
             } else {
                 GetStartedView()
             }
+        }
+        .environmentObject(widgetNavigationCoordinator)
+        .onOpenURL { url in
+            widgetNavigationCoordinator.receive(url)
         }
         .animation(.easeInOut(duration: 0.25), value: authService.isAuthenticated)
     }
