@@ -105,6 +105,9 @@ final class AuthService: ObservableObject {
                 Task { @MainActor [weak self] in
                     guard let self = self else { return }
                     if let user = user {
+                        if PublicProfileService.shared.currentProfile?.userId != user.uid {
+                            PublicProfileService.shared.clearInMemoryCache()
+                        }
                         self.currentUser = PACEUser(
                             id: user.uid,
                             email: user.email ?? "",
@@ -115,6 +118,7 @@ final class AuthService: ObservableObject {
                     } else {
                         self.currentUser = nil
                         self.isAuthenticated = false
+                        PublicProfileService.shared.clearInMemoryCache()
                     }
                 }
             }
@@ -310,6 +314,7 @@ final class AuthService: ObservableObject {
         GoalService.shared.clearInMemoryCache()
         DailyLogService.shared.clearInMemoryCache()
         EvidenceService.shared.clearInMemoryCache()
+        PublicProfileService.shared.clearInMemoryCache()
         PACEWidgetSyncService.shared.syncPrimaryGoal(goals: [], logsByGoal: [:])
     }
     

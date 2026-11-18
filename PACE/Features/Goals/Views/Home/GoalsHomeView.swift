@@ -21,13 +21,16 @@ struct GoalsHomeView: View {
     @ObservedObject var goalService = GoalService.shared
     @ObservedObject var logService = DailyLogService.shared
     @ObservedObject var evidenceService = EvidenceService.shared
+    @ObservedObject var profileService = PublicProfileService.shared
     
     @State private var showCreateGoalSheet = false
     @State private var selectedGoalForDetail: PACEGoal? = nil
     @State private var selectedGoalForLog: PACEGoal? = nil
     @State private var selectedGoalForJourney: PACEGoal? = nil
+    @State private var selectedPartnerProfile: PublicProfile? = nil
     @State private var navigateToDetail = false
     @State private var navigateToJourney = false
+    @State private var showPartnerDiscovery = false
     @ScaledMetric(relativeTo: .largeTitle) private var countdownFontSize: CGFloat = 64
     
     var body: some View {
@@ -50,6 +53,7 @@ struct GoalsHomeView: View {
                             secondaryGoalsSection
                         }
                     }
+                    paceTogetherSection
                     
                     Spacer(minLength: 40)
                 }
@@ -64,6 +68,7 @@ struct GoalsHomeView: View {
                     _ = await logService.fetchLogs(for: g.id)
                 }
                 PACEWidgetSyncService.shared.syncPrimaryGoal(goals: goalService.goals, logsByGoal: logService.logsByGoal)
+                await profileService.fetchSuggestions(limit: 3)
             }
             .sheet(isPresented: $showCreateGoalSheet) {
                 CreateGoalFlowView(
@@ -96,6 +101,12 @@ struct GoalsHomeView: View {
                 if let goal = selectedGoalForJourney {
                     JourneyDetailView(goal: goal)
                 }
+            }
+            .navigationDestination(isPresented: $showPartnerDiscovery) {
+                PartnerDiscoveryView()
+            }
+            .sheet(item: $selectedPartnerProfile) { profile in
+                PublicProfileDetailView(profile: profile)
             }
         }
     }
@@ -392,7 +403,56 @@ struct GoalsHomeView: View {
             }
         }
     }
-    
+
+    // MARK: - PACE Together
+
+    private var paceTogetherSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("PACE TOGETHER")
+                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .foregroundColor(PACETheme.secondaryText)
+                    .tracking(2.0)
+                Spacer()
+                Button("FIND PARTNERS") {
+                    showPartnerDiscovery = true
+                }
+                .font(PACETextStyle.pixelMetadata)
+                .foregroundColor(PACETheme.accent)
+                .buttonStyle(.plain)
+                .accessibilityHint("Opens username search for discoverable PACE profiles")
+            }
+
+            if profileService.isLoading && profileService.suggestions.isEmpty {
+                ProgressView()
+                    .tint(PACETheme.accent)
+                    .frame(maxWidth: .infinity, minHeight: 64)
+                    .accessibilityLabel("Loading PACE Together profiles")
+            } else if profileService.suggestions.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(profileService.errorMessage ?? "NO DISCOVERABLE PROFILES YET.")
+                        .font(PACETextStyle.pixelMetadata)
+                        .foregroundColor(profileService.errorMessage == nil ? PACETheme.secondaryText : .red)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text("CREATE A PROFILE IN SETTINGS TO CONTROL YOUR VISIBILITY.")
+                        .font(PACETextStyle.pixelMetadata)
+                        .foregroundColor(PACETheme.mutedText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(PACETheme.surface)
+                .overlay(Rectangle().stroke(PACETheme.border, lineWidth: 1))
+            } else {
+                ForEach(profileService.suggestions.prefix(3)) { profile in
+                    PACEProfileCard(profile: profile) {
+                        selectedPartnerProfile = profile
+                    }
+                }
+            }
+        }
+    }
+
     // MARK: - Empty State
     
     private var emptyStateView: some View {

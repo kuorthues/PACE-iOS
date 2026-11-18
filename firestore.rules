@@ -1,0 +1,85 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    function validProfile(uid, data) {
+      return data.keys().hasOnly([
+          'userId',
+          'username',
+          'usernameNormalized',
+          'displayName',
+          'bio',
+          'isDiscoverable',
+          'lookingForPartner',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.userId == uid
+        && data.username is string
+        && data.username.matches('^[A-Za-z0-9_.]{3,20}$')
+        && data.usernameNormalized is string
+        && data.usernameNormalized.matches('^[a-z0-9_.]{3,20}$')
+        && data.displayName is string
+        && data.displayName.size() > 0
+        && data.displayName.size() <= 60
+        && data.bio is string
+        && data.bio.size() <= 120
+        && data.isDiscoverable is bool
+        && data.lookingForPartner is bool
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    match /publicProfiles/{uid} {
+      allow get: if signedIn() && (isOwner(uid) || resource.data.isDiscoverable == true);
+      allow list: if signedIn() && resource.data.isDiscoverable == true;
+
+      allow create: if isOwner(uid)
+        && validProfile(uid, request.resource.data)
+        && getAfter(/databases/$(database)/documents/usernames/$(request.resource.data.usernameNormalized)).data.userId == uid
+        && getAfter(/databases/$(database)/documents/usernames/$(request.resource.data.usernameNormalized)).data.usernameNormalized == request.resource.data.usernameNormalized;
+
+      allow update: if isOwner(uid)
+        && validProfile(uid, request.resource.data)
+        && resource.data.userId == uid
+        && request.resource.data.userId == resource.data.userId
+        && request.resource.data.username == resource.data.username
+        && request.resource.data.usernameNormalized == resource.data.usernameNormalized
+        && request.resource.data.createdAt == resource.data.createdAt
+        && get(/databases/$(database)/documents/usernames/$(resource.data.usernameNormalized)).data.userId == uid;
+
+      allow delete: if false;
+    }
+
+    match /usernames/{normalizedUsername} {
+      allow get: if signedIn() && resource.data.userId == request.auth.uid;
+      allow list: if false;
+      allow create: if signedIn()
+        && !exists(/databases/$(database)/documents/usernames/$(normalizedUsername))
+        && request.resource.data.keys().hasOnly(['userId', 'usernameNormalized', 'createdAt'])
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.usernameNormalized == normalizedUsername
+        && request.resource.data.createdAt is timestamp
+        && getAfter(/databases/$(database)/documents/publicProfiles/$(request.auth.uid)).data.usernameNormalized == normalizedUsername;
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    // Existing personal data remains private and user-scoped.
+    match /users/{uid} {
+      allow read, write: if isOwner(uid);
+    }
+
+    match /users/{uid}/{document=**} {
+      allow read, write: if isOwner(uid);
+    }
+  }
+}

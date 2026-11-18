@@ -11,7 +11,8 @@ import SwiftUI
 
 struct SettingsPlaceholderView: View {
     @ObservedObject var authService = AuthService.shared
-    
+    @ObservedObject private var profileService = PublicProfileService.shared
+    @State private var showProfileEditor = false
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -21,6 +22,8 @@ struct SettingsPlaceholderView: View {
                         .foregroundColor(PACETheme.primaryText)
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.top, 16)
+
+                    profileSection
 
                     VStack(alignment: .leading, spacing: 14) {
                         Text("SYSTEM CONFIGURATION")
@@ -156,6 +159,64 @@ struct SettingsPlaceholderView: View {
             }
             .background(PACETheme.background.ignoresSafeArea())
             .toolbar(.hidden, for: .navigationBar)
+            .task {
+                await profileService.fetchCurrentProfile()
+            }
+            .sheet(isPresented: $showProfileEditor) {
+                ProfileEditView()
+            }
+        }
+    }
+
+    private var profileSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("PACE TOGETHER")
+                .font(.system(.subheadline, design: .monospaced).weight(.bold))
+                .foregroundColor(PACETheme.secondaryText)
+                .tracking(1.5)
+
+            Button {
+                showProfileEditor = true
+            } label: {
+                HStack(spacing: 12) {
+                    if let profile = profileService.currentProfile {
+                        PACEProfileAvatar(profile: profile, size: 48)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(profile.displayName)
+                                .font(PACETextStyle.displaySmall)
+                                .foregroundColor(PACETheme.primaryText)
+                                .lineLimit(1)
+                            Text("@\(profile.username) · \(profile.isDiscoverable ? "DISCOVERABLE" : "PRIVATE")")
+                                .font(PACETextStyle.pixelMetadata)
+                                .foregroundColor(profile.isDiscoverable ? PACETheme.accent : PACETheme.secondaryText)
+                        }
+                    } else {
+                        Image(systemName: "person.crop.square")
+                            .font(.system(size: 28, weight: .semibold))
+                            .foregroundColor(PACETheme.accent)
+                            .frame(width: 48, height: 48)
+                            .overlay(Rectangle().stroke(PACETheme.border, lineWidth: 1))
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("CREATE YOUR PACE PROFILE")
+                                .font(PACETextStyle.displaySmall)
+                                .foregroundColor(PACETheme.primaryText)
+                            Text("OPTIONAL · PRIVATE BY DEFAULT")
+                                .font(PACETextStyle.pixelMetadata)
+                                .foregroundColor(PACETheme.secondaryText)
+                        }
+                    }
+                    Spacer()
+                    Image(systemName: "arrow.up.right")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundColor(PACETheme.accent)
+                }
+                .padding(14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(PACETheme.surface)
+                .overlay(Rectangle().stroke(PACETheme.border, lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(profileService.currentProfile == nil ? "Create your PACE profile" : "Edit your PACE profile")
         }
     }
 }
