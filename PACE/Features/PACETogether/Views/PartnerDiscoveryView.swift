@@ -6,8 +6,20 @@ struct PartnerDiscoveryView: View {
 
     @State private var searchText = ""
     @State private var hasSearched = false
-    @State private var selectedProfile: PublicProfile?
+    @State private var selectedPresentation: ProfilePresentation?
 
+
+    private enum ProfilePresentation: Identifiable {
+        case detail(PublicProfile)
+        case invite(PublicProfile)
+
+        var id: String {
+            switch self {
+            case .detail(let profile): return "\(profile.id)-detail"
+            case .invite(let profile): return "\(profile.id)-invite"
+            }
+        }
+    }
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -46,8 +58,13 @@ struct PartnerDiscoveryView: View {
                     await profileService.fetchSuggestions(limit: 6)
                 }
             }
-            .sheet(item: $selectedProfile) { profile in
-                PublicProfileDetailView(profile: profile)
+            .sheet(item: $selectedPresentation) { presentation in
+                switch presentation {
+                case .detail(let profile):
+                    PublicProfileDetailView(profile: profile)
+                case .invite(let profile):
+                    InvitationFlowView(profile: profile)
+                }
             }
         }
     }
@@ -145,9 +162,11 @@ struct PartnerDiscoveryView: View {
                 .overlay(Rectangle().stroke(PACETheme.border, lineWidth: 1))
         } else {
             ForEach(profiles) { profile in
-                PACEProfileCard(profile: profile) {
-                    selectedProfile = profile
-                }
+                PACEProfileCard(
+                    profile: profile,
+                    onViewProfile: { selectedPresentation = .detail(profile) },
+                    onInvite: { selectedPresentation = .invite(profile) }
+                )
             }
         }
     }

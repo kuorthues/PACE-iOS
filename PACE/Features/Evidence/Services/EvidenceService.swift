@@ -118,6 +118,7 @@ final class EvidenceService: ObservableObject {
                     .document(goalId)
                     .collection("evidence")
                     .getDocuments()
+                guard authoritativeUserId() == uid else { return [] }
                 
                 let fetched = snapshot.documents.compactMap { doc -> EvidenceItem? in
                     EvidenceItem(id: doc.documentID, dictionary: doc.data())
@@ -130,6 +131,7 @@ final class EvidenceService: ObservableObject {
             }
         }
         #endif
+        guard authoritativeUserId() == uid else { return [] }
         let local = loadLocalMetadata(for: goalId, uid: uid)
             .filter { $0.userId == uid && $0.goalId == goalId }
         self.evidenceByGoal[goalId] = local
@@ -164,6 +166,9 @@ final class EvidenceService: ObservableObject {
             let error = AuthError.validation("You must be logged in to save evidence.")
             self.errorMessage = error.localizedDescription
             throw error
+        }
+        guard !SharedGoalService.shared.sourceGoalIdsInProgress.contains(goalId) else {
+            throw AuthError.validation("Evidence is locked while this goal is being shared.")
         }
         
         // 1. Compress image to sensible mobile dimensions
@@ -215,6 +220,9 @@ final class EvidenceService: ObservableObject {
             }
         }
         #endif
+        guard authoritativeUserId() == uid else {
+            throw AuthError.validation("Account changed while photo evidence was saving.")
+        }
         
         // 4. Append local metadata; multiple proofs may belong to one daily log.
         var currentItems = loadLocalMetadata(for: goalId, uid: uid)
@@ -257,6 +265,9 @@ final class EvidenceService: ObservableObject {
             self.errorMessage = error.localizedDescription
             throw error
         }
+        guard !SharedGoalService.shared.sourceGoalIdsInProgress.contains(item.goalId) else {
+            throw AuthError.validation("Evidence is locked while this goal is being shared.")
+        }
         
         // 1. Delete from Firestore
 #if canImport(FirebaseFirestore) && canImport(FirebaseAuth)
@@ -276,6 +287,9 @@ final class EvidenceService: ObservableObject {
             }
         }
         #endif
+        guard authoritativeUserId() == uid else {
+            throw AuthError.validation("Account changed while photo evidence was deleting.")
+        }
         
         // 2. Remove from memory and user-scoped disk
         memoryCache.removeObject(forKey: "\(item.userId)|\(item.id)" as NSString)
@@ -300,6 +314,7 @@ final class EvidenceService: ObservableObject {
 
     func deleteAllEvidence(for goalId: String) async {
         guard let uid = authoritativeUserId() else { return }
+        guard !SharedGoalService.shared.sourceGoalIdsInProgress.contains(goalId) else { return }
         let cached = evidenceByGoal[goalId] ?? []
         let fetched = await fetchEvidence(for: goalId)
         var itemsById: [String: EvidenceItem] = [:]

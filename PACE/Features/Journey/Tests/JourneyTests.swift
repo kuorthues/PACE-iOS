@@ -271,6 +271,96 @@ final class JourneyTests {
         )
         assert(longTimeline.count == 61, "60-day target from today renders exactly 61 days (Day 1 to Day 61)")
         assert(longTimeline.last?.isTarget == true, "Terminal day is target")
+        // ---------------------------------------------------------------
+        // TEST 7: Shared Journey grouping and separate member analytics
+        // ---------------------------------------------------------------
+        let sharedGoal = SharedGoal(
+            id: "shared_test",
+            title: "Shared Journey",
+            startDate: calendar.date(byAdding: .day, value: -5, to: today)!,
+            targetDate: calendar.date(byAdding: .day, value: 5, to: today)!,
+            activityTypes: ["Study"],
+            scheduledWeekdays: [1, 2, 3, 4, 5, 6, 7],
+            ownerId: "member_a",
+            memberIds: ["member_a", "member_b"],
+            status: .active,
+            memberJoinedAt: today
+        )
+        let yesterday = calendar.date(byAdding: .day, value: -1, to: today)!
+        let tomorrow = calendar.date(byAdding: .day, value: 1, to: today)!
+        let sharedLogs = [
+            DailyLog(id: "a_yesterday", goalId: sharedGoal.id, authorId: "member_a", date: yesterday, selectedActivities: ["Study"], durationMinutes: 30),
+            DailyLog(id: "a_today", goalId: sharedGoal.id, authorId: "member_a", date: today, selectedActivities: ["Study"], durationMinutes: 45),
+            DailyLog(id: "b_today", goalId: sharedGoal.id, authorId: "member_b", date: today, selectedActivities: ["Practice"], durationMinutes: 60)
+        ]
+        let futureLog = DailyLog(
+            id: "b_future",
+            goalId: sharedGoal.id,
+            authorId: "member_b",
+            date: tomorrow,
+            selectedActivities: ["Study"],
+            durationMinutes: 90
+        )
+        let timezoneOffsetLog = DailyLog(
+            id: "b_timezone_offset",
+            goalId: sharedGoal.id,
+            authorId: "member_b",
+            date: calendar.date(byAdding: .hour, value: -12, to: today)!,
+            dateString: DailyLog.dateFormatter.string(from: today),
+            selectedActivities: ["Practice"],
+            durationMinutes: 15
+        )
+        let timezoneGroupedTimeline = JourneyTimelineBuilder.buildSharedTimeline(
+            goal: sharedGoal.asPACEGoal(),
+            logs: [sharedLogs[1], timezoneOffsetLog],
+            asOf: today,
+            calendar: calendar
+        )
+        assert(
+            timezoneGroupedTimeline.first(where: { !$0.isDeadline })?.logs.count == 2,
+            "Shared Journey groups same calendar dateString despite contributor timezone offsets"
+        )
+        let sharedTimeline = JourneyTimelineBuilder.buildSharedTimeline(
+            goal: sharedGoal.asPACEGoal(),
+            logs: sharedLogs + [futureLog],
+            asOf: today,
+            calendar: calendar
+        )
+        let datedEntries = sharedTimeline.filter { !$0.isDeadline }
+        let todayEntry = datedEntries.first { $0.dateString == DailyLog.dateFormatter.string(from: today) }
+        assert(datedEntries.count == 2, "Shared Journey includes only dates with completed contributions")
+        assert(todayEntry?.logs.count == 2, "Same-day contributions remain grouped and individually attributed")
+        assert(!datedEntries.contains(where: { $0.dateString == futureLog.dateString }), "Shared Journey hides future entries")
+        assert(sharedTimeline.last?.isDeadline == true, "Shared Journey ends with one deadline marker")
+        assert(sharedTimeline.filter(\.isDeadline).count == 1, "Shared Journey contains one final deadline marker")
+
+        let sharedMetrics = SharedGoalAnalytics.compute(
+            goal: sharedGoal,
+            logs: sharedLogs,
+            asOf: today,
+            calendar: calendar
+        )
+        let memberMetrics = Dictionary(uniqueKeysWithValues: sharedMetrics.members.map { ($0.userId, $0) })
+        assert(sharedMetrics.totalSessions == 3, "Team sessions count each member's log once")
+        assert(sharedMetrics.combinedLoggedMinutes == 135, "Team logged time combines both members")
+        assert(sharedMetrics.activeDays == 2, "Team active days count same-date contributions once")
+        assert(memberMetrics["member_a"]?.currentStreak == 2, "Owner streak uses only owner contributions")
+        assert(memberMetrics["member_b"]?.currentStreak == 1, "Member streak does not inherit owner contributions")
+        assert(memberMetrics["member_b"]?.consistencyPercentage == 100, "Member consistency starts from acceptance, not the owner's earlier history")
+        assert(memberMetrics["member_a"]?.sessions == 2, "Owner sessions count only owner logs")
+        assert(memberMetrics["member_a"]?.totalLoggedMinutes == 75, "Owner time counts only owner minutes")
+        assert(memberMetrics["member_b"]?.sessions == 1, "Member sessions count only member logs")
+        assert(memberMetrics["member_b"]?.totalLoggedMinutes == 60, "Member time excludes owner contributions")
+        var endedGoal = sharedGoal
+        endedGoal.status = .ended
+        endedGoal.memberIds = ["member_a"]
+        let retainedMetrics = SharedGoalAnalytics.compute(
+            goal: endedGoal,
+            logs: sharedLogs,
+            asOf: today,
+            calendar: calendar
+        )
+        assert(retainedMetrics.members.contains(where: { $0.userId == "member_b" }), "Owner retains individual metrics for a departed collaborator")
         
         print("\n==========================================")
         print("🏁 JOURNEY RESULTS: \(passedCount)/\(totalCount) PASSED (Failures: \(failures.count))")

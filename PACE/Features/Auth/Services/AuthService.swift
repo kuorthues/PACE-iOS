@@ -105,8 +105,8 @@ final class AuthService: ObservableObject {
                 Task { @MainActor [weak self] in
                     guard let self = self else { return }
                     if let user = user {
-                        if PublicProfileService.shared.currentProfile?.userId != user.uid {
-                            PublicProfileService.shared.clearInMemoryCache()
+                        if self.currentUser?.id != user.uid {
+                            self.clearUserScopedCaches()
                         }
                         self.currentUser = PACEUser(
                             id: user.uid,
@@ -116,9 +116,9 @@ final class AuthService: ObservableObject {
                         self.isAuthenticated = true
                         await self.syncFirestoreProfile(for: user)
                     } else {
+                        self.clearUserScopedCaches()
                         self.currentUser = nil
                         self.isAuthenticated = false
-                        PublicProfileService.shared.clearInMemoryCache()
                     }
                 }
             }
@@ -184,10 +184,12 @@ final class AuthService: ObservableObject {
         
         do {
             let result = try await Auth.auth().createUser(withEmail: trimmedEmail, password: password)
+            if self.currentUser?.id != result.user.uid {
+                self.clearUserScopedCaches()
+            }
             let changeRequest = result.user.createProfileChangeRequest()
             changeRequest.displayName = trimmedName
             try await changeRequest.commitChanges()
-            
             self.currentUser = PACEUser(
                 id: result.user.uid,
                 email: trimmedEmail,
@@ -241,6 +243,9 @@ final class AuthService: ObservableObject {
         
         do {
             let result = try await Auth.auth().signIn(withEmail: trimmedEmail, password: password)
+            if self.currentUser?.id != result.user.uid {
+                self.clearUserScopedCaches()
+            }
             self.currentUser = PACEUser(
                 id: result.user.uid,
                 email: result.user.email ?? trimmedEmail,
@@ -297,6 +302,16 @@ final class AuthService: ObservableObject {
         #endif
     }
     
+    private func clearUserScopedCaches() {
+        GoalService.shared.clearInMemoryCache()
+        DailyLogService.shared.clearInMemoryCache()
+        EvidenceService.shared.clearInMemoryCache()
+        PublicProfileService.shared.clearInMemoryCache()
+        SharedGoalService.shared.clearInMemoryCache()
+        GoalInvitationService.shared.clearInMemoryCache()
+        PACEWidgetSyncService.shared.syncPrimaryGoal(goals: [], logsByGoal: [:])
+    }
+
     // MARK: - Logout
     
     func signOut() {
@@ -311,11 +326,8 @@ final class AuthService: ObservableObject {
         UserDefaults.standard.removeObject(forKey: "pace_active_user")
         self.currentUser = nil
         self.isAuthenticated = false
-        GoalService.shared.clearInMemoryCache()
-        DailyLogService.shared.clearInMemoryCache()
-        EvidenceService.shared.clearInMemoryCache()
-        PublicProfileService.shared.clearInMemoryCache()
-        PACEWidgetSyncService.shared.syncPrimaryGoal(goals: [], logsByGoal: [:])
+        clearUserScopedCaches()
+
     }
     
     // MARK: - Firestore User Profile Persistence

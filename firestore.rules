@@ -81,5 +81,459 @@ service cloud.firestore {
     match /users/{uid}/{document=**} {
       allow read, write: if isOwner(uid);
     }
+    function goalPath(goalId) {
+      return /databases/$(database)/documents/sharedGoals/$(goalId);
+    }
+
+    function invitationPath(invitationId) {
+      return /databases/$(database)/documents/goalInvitations/$(invitationId);
+    }
+
+    function soloGoalPath(uid, goalId) {
+      return /databases/$(database)/documents/users/$(uid)/goals/$(goalId);
+    }
+
+    function soloLogPath(uid, goalId, logId) {
+      return /databases/$(database)/documents/users/$(uid)/goals/$(goalId)/logs/$(logId);
+    }
+
+    function validActivityItem(values, index) {
+      return values.size() <= index || values[index] is string;
+    }
+
+    function validActivityList(values) {
+      return values is list
+        && values.size() > 0
+        && values.size() <= 20
+        && validActivityItem(values, 0)
+        && validActivityItem(values, 1)
+        && validActivityItem(values, 2)
+        && validActivityItem(values, 3)
+        && validActivityItem(values, 4)
+        && validActivityItem(values, 5)
+        && validActivityItem(values, 6)
+        && validActivityItem(values, 7)
+        && validActivityItem(values, 8)
+        && validActivityItem(values, 9)
+        && validActivityItem(values, 10)
+        && validActivityItem(values, 11)
+        && validActivityItem(values, 12)
+        && validActivityItem(values, 13)
+        && validActivityItem(values, 14)
+        && validActivityItem(values, 15)
+        && validActivityItem(values, 16)
+        && validActivityItem(values, 17)
+        && validActivityItem(values, 18)
+        && validActivityItem(values, 19);
+    }
+
+    function validGoal(data) {
+      return data.keys().hasAll([
+          'title', 'description', 'startDate', 'targetDate', 'targetDateString',
+          'activityTypes', 'scheduledWeekdays', 'ownerId', 'memberIds', 'status',
+          'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'title', 'description', 'startDate', 'targetDate', 'targetDateString',
+          'activityTypes', 'scheduledWeekdays', 'ownerId', 'memberIds', 'status',
+          'pendingInvitationId', 'sourceGoalId', 'memberJoinedAt',
+          'createdAt', 'updatedAt'
+        ])
+        && data.title is string
+        && data.title.size() > 0
+        && data.title.size() <= 120
+        && data.description is string
+        && data.description.size() <= 500
+        && data.startDate is timestamp
+        && data.targetDate is timestamp
+        && data.targetDateString is string
+        && data.targetDateString.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        && validActivityList(data.activityTypes)
+        && data.scheduledWeekdays is list
+        && data.scheduledWeekdays.size() > 0
+        && data.scheduledWeekdays.size() <= 7
+        && data.scheduledWeekdays.hasOnly([1, 2, 3, 4, 5, 6, 7])
+        && data.ownerId is string
+        && data.memberIds is list
+        && data.memberIds.size() >= 1
+        && data.memberIds.size() <= 2
+        && data.status in ['preparing', 'inviting', 'active', 'declined', 'cancelled', 'ended']
+        && (!('pendingInvitationId' in data) || data.pendingInvitationId is string)
+        && (!('sourceGoalId' in data) || data.sourceGoalId is string)
+        && (!('memberJoinedAt' in data) || data.memberJoinedAt is timestamp)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function validSoloConversion(goalId, data) {
+      return 'sourceGoalId' in data
+        && goalId == 'converted_' + data.ownerId + '_' + data.sourceGoalId
+        && exists(soloGoalPath(data.ownerId, data.sourceGoalId))
+        && get(soloGoalPath(data.ownerId, data.sourceGoalId)).data.userId == data.ownerId
+        && get(soloGoalPath(data.ownerId, data.sourceGoalId)).data.status == 'active'
+        && get(soloGoalPath(data.ownerId, data.sourceGoalId)).data.title == data.title
+        && get(soloGoalPath(data.ownerId, data.sourceGoalId)).data.createdAt == data.startDate
+        && get(soloGoalPath(data.ownerId, data.sourceGoalId)).data.targetDate == data.targetDate
+        && get(soloGoalPath(data.ownerId, data.sourceGoalId)).data.targetDateString == data.targetDateString
+        && get(soloGoalPath(data.ownerId, data.sourceGoalId)).data.activityTypes == data.activityTypes
+        && get(soloGoalPath(data.ownerId, data.sourceGoalId)).data.scheduledWeekdays == data.scheduledWeekdays;
+    }
+
+    function sameOptionalField(first, second, key) {
+      return (!(key in first) && !(key in second))
+        || ((key in first) && (key in second) && first[key] == second[key]);
+    }
+
+    function validInvitation(data) {
+      return data.keys().hasAll([
+          'sharedGoalId', 'senderId', 'recipientId', 'status', 'goalTitle',
+          'targetDate', 'targetDateString', 'createdAt'
+        ])
+        && data.keys().hasOnly([
+          'sharedGoalId', 'senderId', 'recipientId', 'status', 'goalTitle',
+          'targetDate', 'targetDateString', 'createdAt', 'respondedAt'
+        ])
+        && data.sharedGoalId is string
+        && data.senderId is string
+        && data.recipientId is string
+        && data.senderId != data.recipientId
+        && data.status in ['pending', 'accepted', 'declined', 'cancelled']
+        && data.goalTitle is string
+        && data.goalTitle.size() > 0
+        && data.goalTitle.size() <= 120
+        && data.targetDate is timestamp
+        && data.targetDateString is string
+        && data.targetDateString.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        && data.createdAt is timestamp
+        && (!('respondedAt' in data) || data.respondedAt is timestamp);
+    }
+
+    function validLog(data) {
+      return data.keys().hasAll([
+          'id', 'goalId', 'authorId', 'date', 'dateString',
+          'selectedActivities', 'durationMinutes', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'goalId', 'authorId', 'date', 'dateString',
+          'selectedActivities', 'durationMinutes', 'note', 'evidenceId',
+          'createdAt', 'updatedAt', 'sourceLogId'
+        ])
+        && data.id is string
+        && data.goalId is string
+        && data.authorId is string
+        && data.date is timestamp
+        && data.dateString is string
+        && data.dateString.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        && validActivityList(data.selectedActivities)
+        && data.durationMinutes is int
+        && data.durationMinutes > 0
+        && (!('note' in data) || (data.note is string && data.note.size() <= 5000))
+        && (!('evidenceId' in data) || data.evidenceId is string)
+        && (!('sourceLogId' in data) || data.sourceLogId is string)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function validMigratedLog(goalId, logId, data) {
+      let goal = get(goalPath(goalId)).data;
+      let sourcePath = soloLogPath(goal.ownerId, goal.sourceGoalId, data.sourceLogId);
+      let original = get(sourcePath).data;
+      return goal.status == 'preparing'
+        && 'sourceGoalId' in goal
+        && 'sourceLogId' in data
+        && exists(sourcePath)
+        && request.auth.uid == goal.ownerId
+        && logId == 'migration_' + data.sourceLogId
+        && data.id == logId
+        && data.goalId == goalId
+        && data.authorId == goal.ownerId
+        && data.date == original.date
+        && data.dateString == original.dateString
+        && data.selectedActivities == original.selectedActivities
+        && data.durationMinutes == original.durationMinutes
+        && data.createdAt == original.createdAt
+        && data.updatedAt == original.updatedAt
+        && sameOptionalField(data, original, 'note')
+        && sameOptionalField(data, original, 'evidenceId');
+    }
+
+    function isMember(goalId) {
+      return signedIn()
+        && exists(goalPath(goalId))
+        && request.auth.uid in get(goalPath(goalId)).data.memberIds;
+    }
+
+    function matchingPendingInvitation(invitationId, goalId, senderId, recipientId) {
+      let inv = getAfter(invitationPath(invitationId)).data;
+      let goal = getAfter(goalPath(goalId)).data;
+      return inv.sharedGoalId == goalId
+        && inv.senderId == senderId
+        && inv.recipientId == recipientId
+        && inv.status == 'pending'
+        && inv.goalTitle == goal.title
+        && inv.targetDateString == goal.targetDateString
+        && inv.targetDate == goal.targetDate
+        && goal.ownerId == senderId
+        && goal.memberIds == [senderId]
+        && goal.status == 'inviting'
+        && goal.pendingInvitationId == invitationId;
+    }
+
+    match /sharedGoals/{goalId} {
+      allow get, list: if isMember(goalId);
+
+      allow create: if signedIn()
+        && validGoal(request.resource.data)
+        && request.resource.data.ownerId == request.auth.uid
+        && request.resource.data.memberIds == [request.auth.uid]
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time
+        && (
+          (request.resource.data.status == 'preparing'
+            && 'sourceGoalId' in request.resource.data
+            && !('pendingInvitationId' in request.resource.data)
+            && validSoloConversion(goalId, request.resource.data))
+          || (request.resource.data.status == 'inviting'
+            && !('sourceGoalId' in request.resource.data)
+            && 'pendingInvitationId' in request.resource.data
+            && existsAfter(invitationPath(request.resource.data.pendingInvitationId))
+            && matchingPendingInvitation(
+              request.resource.data.pendingInvitationId, goalId,
+              request.auth.uid,
+              getAfter(invitationPath(request.resource.data.pendingInvitationId)).data.recipientId
+            ))
+        );
+
+      allow update: if signedIn()
+        && validGoal(request.resource.data)
+        && request.resource.data.ownerId == resource.data.ownerId
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.updatedAt == request.time
+        && (
+          // Only an active goal's owner can edit metadata; invitations cannot be bait-and-switched.
+          (request.auth.uid == resource.data.ownerId
+            && resource.data.status == 'active'
+            && !('pendingInvitationId' in resource.data)
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'title', 'description', 'targetDate', 'targetDateString',
+              'activityTypes', 'scheduledWeekdays', 'updatedAt'
+            ]))
+          || (
+            // An interrupted conversion can be resumed against the current private goal snapshot.
+            request.auth.uid == resource.data.ownerId
+            && resource.data.status == 'preparing'
+            && request.resource.data.status == 'preparing'
+            && resource.data.memberIds == [request.auth.uid]
+            && request.resource.data.memberIds == resource.data.memberIds
+            && !('pendingInvitationId' in request.resource.data)
+            && validSoloConversion(goalId, request.resource.data)
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'title', 'description', 'startDate', 'targetDate', 'targetDateString',
+              'activityTypes', 'scheduledWeekdays', 'updatedAt'
+            ])
+          )
+          || (
+            // Owner may restart a declined/cancelled solo-goal conversion without deleting history.
+            request.auth.uid == resource.data.ownerId
+            && resource.data.status in ['declined', 'cancelled']
+            && request.resource.data.status == 'preparing'
+            && resource.data.memberIds == [request.auth.uid]
+            && request.resource.data.memberIds == resource.data.memberIds
+            && !('pendingInvitationId' in request.resource.data)
+            && validSoloConversion(goalId, request.resource.data)
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'status', 'title', 'description', 'startDate', 'targetDate',
+              'targetDateString', 'activityTypes', 'scheduledWeekdays', 'updatedAt'
+            ])
+          )
+          || (
+            // The owner atomically binds a pending invitation after history copy finishes.
+            request.auth.uid == resource.data.ownerId
+            && resource.data.status == 'preparing'
+            && resource.data.memberIds == [request.auth.uid]
+            && request.resource.data.status == 'inviting'
+            && request.resource.data.memberIds == resource.data.memberIds
+            && 'pendingInvitationId' in request.resource.data
+            && existsAfter(invitationPath(request.resource.data.pendingInvitationId))
+            && matchingPendingInvitation(
+              request.resource.data.pendingInvitationId, goalId,
+              request.auth.uid,
+              getAfter(invitationPath(request.resource.data.pendingInvitationId)).data.recipientId
+            )
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'status', 'pendingInvitationId', 'updatedAt'
+            ])
+          )
+          || (
+            // Decline/cancel consumes the exact pending invitation atomically.
+            resource.data.status == 'inviting'
+            && 'pendingInvitationId' in resource.data
+            && resource.data.memberIds == [resource.data.ownerId]
+            && request.resource.data.memberIds == resource.data.memberIds
+            && !('pendingInvitationId' in request.resource.data)
+            && request.resource.data.status in ['declined', 'cancelled']
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'status', 'pendingInvitationId', 'updatedAt'
+            ])
+            && exists(invitationPath(resource.data.pendingInvitationId))
+            && get(invitationPath(resource.data.pendingInvitationId)).data.status == 'pending'
+            && get(invitationPath(resource.data.pendingInvitationId)).data.sharedGoalId == goalId
+            && get(invitationPath(resource.data.pendingInvitationId)).data.senderId == resource.data.ownerId
+            && getAfter(invitationPath(resource.data.pendingInvitationId)).data.status == request.resource.data.status
+            && getAfter(invitationPath(resource.data.pendingInvitationId)).data.sharedGoalId == goalId
+            && (
+              (request.resource.data.status == 'declined'
+                && request.auth.uid == get(invitationPath(resource.data.pendingInvitationId)).data.recipientId)
+              || (request.resource.data.status == 'cancelled'
+                && request.auth.uid == resource.data.ownerId)
+            )
+          )
+          || (
+            // Recipient accepts atomically and becomes the only second member.
+            resource.data.status == 'inviting'
+            && 'pendingInvitationId' in resource.data
+            && resource.data.memberIds == [resource.data.ownerId]
+            && !('memberJoinedAt' in resource.data)
+            && exists(invitationPath(resource.data.pendingInvitationId))
+            && get(invitationPath(resource.data.pendingInvitationId)).data.status == 'pending'
+            && request.resource.data.status == 'active'
+            && request.resource.data.memberIds == [resource.data.ownerId, request.auth.uid]
+            && request.resource.data.memberJoinedAt == request.time
+            && !('pendingInvitationId' in request.resource.data)
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'status', 'memberIds', 'pendingInvitationId', 'memberJoinedAt', 'updatedAt'
+            ])
+            && get(invitationPath(resource.data.pendingInvitationId)).data.sharedGoalId == goalId
+            && get(invitationPath(resource.data.pendingInvitationId)).data.senderId == resource.data.ownerId
+            && get(invitationPath(resource.data.pendingInvitationId)).data.recipientId == request.auth.uid
+            && getAfter(invitationPath(resource.data.pendingInvitationId)).data.status == 'accepted'
+            && getAfter(invitationPath(resource.data.pendingInvitationId)).data.sharedGoalId == goalId
+            && getAfter(invitationPath(resource.data.pendingInvitationId)).data.senderId == resource.data.ownerId
+            && getAfter(invitationPath(resource.data.pendingInvitationId)).data.recipientId == request.auth.uid
+          )
+          || (
+            // A member may leave; historical data is retained for the owner.
+            resource.data.status == 'active'
+            && request.resource.data.status == 'active'
+            && request.auth.uid in resource.data.memberIds
+            && request.auth.uid != resource.data.ownerId
+            && request.resource.data.memberIds == [resource.data.ownerId]
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberIds', 'updatedAt'])
+          )
+          || (
+            // Only the owner can end an active/preparing goal; records remain stored.
+            request.auth.uid == resource.data.ownerId
+            && resource.data.status in ['preparing', 'active']
+            && request.resource.data.status == 'ended'
+            && request.resource.data.memberIds == [resource.data.ownerId]
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'memberIds', 'updatedAt'])
+          )
+        );
+
+      allow delete: if false;
+
+      match /logs/{logId} {
+        allow get, list: if isMember(goalId);
+        allow create: if isMember(goalId)
+          && validLog(request.resource.data)
+          && request.resource.data.id == logId
+          && request.resource.data.goalId == goalId
+          && request.resource.data.authorId == request.auth.uid
+          && request.resource.data.date <= request.time
+          && (
+            (get(goalPath(goalId)).data.status == 'preparing'
+              && validMigratedLog(goalId, logId, request.resource.data))
+            || (get(goalPath(goalId)).data.status in ['inviting', 'active']
+              && logId == request.auth.uid + '_' + request.resource.data.dateString
+              && request.resource.data.createdAt == request.time
+              && request.resource.data.updatedAt == request.time)
+          );
+        allow update: if isMember(goalId)
+          && validLog(request.resource.data)
+          && request.resource.data.id == logId
+          && request.resource.data.goalId == goalId
+          && request.resource.data.date <= request.time
+          && (
+            (get(goalPath(goalId)).data.status in ['inviting', 'active']
+              && resource.data.authorId == request.auth.uid
+              && request.resource.data.authorId == resource.data.authorId
+              && request.resource.data.createdAt == resource.data.createdAt
+              && request.resource.data.date == resource.data.date
+              && request.resource.data.dateString == resource.data.dateString
+              && request.resource.data.updatedAt == request.time
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                'selectedActivities', 'durationMinutes', 'note', 'evidenceId', 'updatedAt'
+              ]))
+            || (get(goalPath(goalId)).data.status == 'preparing'
+              && resource.data.authorId == request.auth.uid
+              && resource.data.id == logId
+              && resource.data.goalId == goalId
+              && resource.data.sourceLogId == request.resource.data.sourceLogId
+              && validMigratedLog(goalId, logId, request.resource.data))
+          );
+        allow delete: if isMember(goalId)
+          && get(goalPath(goalId)).data.status in ['inviting', 'active']
+          && resource.data.authorId == request.auth.uid;
+      }
+    }
+
+    match /goalInvitations/{invitationId} {
+      allow get: if signedIn()
+        && (resource.data.senderId == request.auth.uid
+          || resource.data.recipientId == request.auth.uid);
+      allow list: if signedIn()
+        && (resource.data.senderId == request.auth.uid
+          || resource.data.recipientId == request.auth.uid);
+      allow create: if signedIn()
+        && validInvitation(request.resource.data)
+        && request.resource.data.senderId == request.auth.uid
+        && request.resource.data.status == 'pending'
+        && !('respondedAt' in request.resource.data)
+        && request.resource.data.createdAt == request.time
+        && get(/databases/$(database)/documents/publicProfiles/$(request.resource.data.recipientId)).data.isDiscoverable == true
+        && existsAfter(goalPath(request.resource.data.sharedGoalId))
+        && matchingPendingInvitation(
+          invitationId, request.resource.data.sharedGoalId,
+          request.auth.uid, request.resource.data.recipientId
+        );
+      allow update: if signedIn()
+        && validInvitation(request.resource.data)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'respondedAt'])
+        && resource.data.status == 'pending'
+        && request.resource.data.status in ['accepted', 'declined', 'cancelled']
+        && request.resource.data.respondedAt == request.time
+        && request.resource.data.sharedGoalId == resource.data.sharedGoalId
+        && request.resource.data.senderId == resource.data.senderId
+        && request.resource.data.recipientId == resource.data.recipientId
+        && request.resource.data.goalTitle == resource.data.goalTitle
+        && request.resource.data.targetDate == resource.data.targetDate
+        && request.resource.data.createdAt == resource.data.createdAt
+        && existsAfter(goalPath(resource.data.sharedGoalId))
+        && (
+          (request.resource.data.status in ['accepted', 'declined']
+            && request.auth.uid == resource.data.recipientId)
+          || (request.resource.data.status == 'cancelled'
+            && request.auth.uid == resource.data.senderId)
+        )
+        && (
+          (request.resource.data.status == 'accepted'
+            && getAfter(goalPath(resource.data.sharedGoalId)).data.status == 'active'
+            && getAfter(goalPath(resource.data.sharedGoalId)).data.memberIds == [
+              resource.data.senderId, resource.data.recipientId
+            ]
+            && getAfter(goalPath(resource.data.sharedGoalId)).data.ownerId == resource.data.senderId
+            && !('pendingInvitationId' in getAfter(goalPath(resource.data.sharedGoalId)).data))
+            && getAfter(goalPath(resource.data.sharedGoalId)).data.memberJoinedAt == request.time
+          || (request.resource.data.status == 'declined'
+            && getAfter(goalPath(resource.data.sharedGoalId)).data.status == 'declined'
+            && getAfter(goalPath(resource.data.sharedGoalId)).data.memberIds == [resource.data.senderId]
+            && !('pendingInvitationId' in getAfter(goalPath(resource.data.sharedGoalId)).data))
+          || (request.resource.data.status == 'cancelled'
+            && getAfter(goalPath(resource.data.sharedGoalId)).data.status == 'cancelled'
+            && getAfter(goalPath(resource.data.sharedGoalId)).data.memberIds == [resource.data.senderId]
+            && !('pendingInvitationId' in getAfter(goalPath(resource.data.sharedGoalId)).data))
+        );
+      allow delete: if false;
+    }
   }
 }

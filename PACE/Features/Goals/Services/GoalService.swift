@@ -98,6 +98,7 @@ final class GoalService: ObservableObject {
                     .collection("goals")
                     .whereField("status", isEqualTo: GoalStatus.active.rawValue)
                     .getDocuments()
+                guard authoritativeUserId() == uid else { return }
                 
                 let fetchedGoals = snapshot.documents.compactMap { doc -> PACEGoal? in
                     PACEGoal(id: doc.documentID, dictionary: doc.data())
@@ -112,6 +113,7 @@ final class GoalService: ObservableObject {
             }
         }
         #endif
+        guard authoritativeUserId() == uid else { return }
         
         // Load from user-scoped storage fallback
         let local = loadLocalGoals(for: uid).filter { $0.userId == uid && $0.status == .active }
@@ -132,6 +134,7 @@ final class GoalService: ObservableObject {
                     .collection("goals")
                     .document(id)
                     .getDocument()
+                guard authoritativeUserId() == uid else { return nil }
                 
                 if let data = doc.data() {
                     return PACEGoal(id: doc.documentID, dictionary: data)
@@ -141,6 +144,7 @@ final class GoalService: ObservableObject {
             }
         }
         #endif
+        guard authoritativeUserId() == uid else { return nil }
         
         return loadLocalGoals(for: uid).first { $0.id == id && $0.userId == uid }
     }
@@ -221,6 +225,11 @@ final class GoalService: ObservableObject {
             self.errorMessage = error.localizedDescription
             throw error
         }
+        guard !SharedGoalService.shared.sourceGoalIdsInProgress.contains(goal.id) else {
+            let error = AuthError.validation("This goal is being prepared for sharing and cannot be changed yet.")
+            self.errorMessage = error.localizedDescription
+            throw error
+        }
         
         let trimmedTitle = goal.title.trimmingCharacters(in: .whitespacesAndNewlines)
         
@@ -282,6 +291,11 @@ final class GoalService: ObservableObject {
             self.errorMessage = error.localizedDescription
             throw error
         }
+        guard !SharedGoalService.shared.sourceGoalIdsInProgress.contains(id) else {
+            let error = AuthError.validation("This goal is being prepared for sharing and cannot be deleted yet.")
+            self.errorMessage = error.localizedDescription
+            throw error
+        }
         
         // Remove user-scoped child data before deleting the parent goal.
         await DailyLogService.shared.deleteAllLogs(for: id)
@@ -305,6 +319,43 @@ final class GoalService: ObservableObject {
         var current = loadLocalGoals(for: uid)
         current.removeAll(where: { $0.id == id && $0.userId == uid })
         saveLocalGoals(current, for: uid)
+        await fetchActiveGoals()
+    }
+
+    /// Retains a converted solo goal and its private history while removing it from active-goal listings.
+    func archiveConvertedGoal(id: String) async throws {
+        guard let uid = authoritativeUserId() else {
+            throw AuthError.validation("You must be logged in to convert a goal.")
+        }
+        guard var source = await fetchGoal(id: id), source.userId == uid else {
+            throw AuthError.validation("The original private goal could not be found.")
+        }
+        guard source.status == .active else { return }
+        source.status = .archived
+
+        #if canImport(FirebaseFirestore) && canImport(FirebaseAuth)
+        if AuthService.shared.isFirebaseConfigured,
+           let authUid = Auth.auth().currentUser?.uid,
+           authUid == uid {
+            do {
+                try await Firestore.firestore()
+                    .collection("users")
+                    .document(uid)
+                    .collection("goals")
+                    .document(id)
+                    .updateData(["status": GoalStatus.archived.rawValue])
+            } catch {
+                self.errorMessage = "Could not archive the converted solo goal: \(error.localizedDescription)"
+                throw error
+            }
+        }
+        #endif
+
+        var localGoals = loadLocalGoals(for: uid)
+        if let index = localGoals.firstIndex(where: { $0.id == id && $0.userId == uid }) {
+            localGoals[index].status = .archived
+            saveLocalGoals(localGoals, for: uid)
+        }
         await fetchActiveGoals()
     }
     // MARK: - Automated Acceptance Self-Test

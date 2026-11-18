@@ -94,6 +94,7 @@ final class DailyLogService: ObservableObject {
                     .document(goalId)
                     .collection("logs")
                     .getDocuments()
+                guard authoritativeUserId() == uid else { return [] }
                 
                 let fetchedLogs = snapshot.documents.compactMap { doc -> DailyLog? in
                     DailyLog(id: doc.documentID, dictionary: doc.data())
@@ -107,6 +108,7 @@ final class DailyLogService: ObservableObject {
             }
         }
         #endif
+        guard authoritativeUserId() == uid else { return [] }
         
         let local = loadLocalLogs(for: goalId, uid: uid)
         self.logsByGoal[goalId] = local
@@ -134,6 +136,11 @@ final class DailyLogService: ObservableObject {
         errorMessage = nil
         guard let uid = authoritativeUserId() else {
             let error = AuthError.validation("You must be logged in to save a daily log.")
+            self.errorMessage = error.localizedDescription
+            throw error
+        }
+        guard !SharedGoalService.shared.sourceGoalIdsInProgress.contains(goalId) else {
+            let error = AuthError.validation("This goal's progress is locked while it is being shared.")
             self.errorMessage = error.localizedDescription
             throw error
         }
@@ -219,6 +226,9 @@ final class DailyLogService: ObservableObject {
             }
         }
         #endif
+        guard authoritativeUserId() == uid else {
+            throw AuthError.validation("Account changed while the daily log was saving.")
+        }
         
         saveLocalLogs(currentLogs, for: goalId, uid: uid)
         syncWidget()
@@ -229,6 +239,11 @@ final class DailyLogService: ObservableObject {
     func deleteLog(id: String, goalId: String) async throws {
         guard let uid = authoritativeUserId() else {
             let error = AuthError.validation("You must be logged in to delete a daily log.")
+            self.errorMessage = error.localizedDescription
+            throw error
+        }
+        guard !SharedGoalService.shared.sourceGoalIdsInProgress.contains(goalId) else {
+            let error = AuthError.validation("This goal's progress is locked while it is being shared.")
             self.errorMessage = error.localizedDescription
             throw error
         }
@@ -250,6 +265,9 @@ final class DailyLogService: ObservableObject {
             }
         }
         #endif
+        guard authoritativeUserId() == uid else {
+            throw AuthError.validation("Account changed while the daily log was deleting.")
+        }
         
         var currentLogs = loadLocalLogs(for: goalId, uid: uid)
         currentLogs.removeAll(where: { $0.id == id || $0.dateString == id })
@@ -261,6 +279,7 @@ final class DailyLogService: ObservableObject {
     }
     func clearEvidenceReference(goalId: String, logId: String, evidenceId: String) async {
         guard let uid = authoritativeUserId() else { return }
+        guard !SharedGoalService.shared.sourceGoalIdsInProgress.contains(goalId) else { return }
         var logs = logsByGoal[goalId] ?? loadLocalLogs(for: goalId, uid: uid)
         guard let index = logs.firstIndex(where: {
             ($0.id == logId || $0.dateString == logId) && $0.evidenceId == evidenceId
@@ -289,6 +308,7 @@ final class DailyLogService: ObservableObject {
 
     func deleteAllLogs(for goalId: String) async {
         guard let uid = authoritativeUserId() else { return }
+        guard !SharedGoalService.shared.sourceGoalIdsInProgress.contains(goalId) else { return }
         let logs: [DailyLog]
         if let cached = logsByGoal[goalId] {
             logs = cached

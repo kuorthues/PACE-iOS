@@ -13,6 +13,8 @@ import FirebaseFirestore
 struct DailyLog: Identifiable, Codable, Equatable {
     let id: String // Unique ID, typically \(dateString) or \(goalId)_\(dateString)
     let goalId: String
+    var authorId: String? // Set for shared-goal entries; legacy solo logs remain unchanged.
+    var sourceLogId: String? // Original private-log ID retained for local evidence lookup.
     let date: Date
     let dateString: String // "YYYY-MM-DD"
     var selectedActivities: [String]
@@ -25,7 +27,10 @@ struct DailyLog: Identifiable, Codable, Equatable {
     init(
         id: String? = nil,
         goalId: String,
+        authorId: String? = nil,
+        sourceLogId: String? = nil,
         date: Date = Date(),
+        dateString: String? = nil,
         selectedActivities: [String],
         durationMinutes: Int,
         note: String? = nil,
@@ -36,10 +41,12 @@ struct DailyLog: Identifiable, Codable, Equatable {
         let calendar = Calendar.current
         let startOfDay = calendar.startOfDay(for: date)
         let formatter = DailyLog.dateFormatter
-        let dString = formatter.string(from: startOfDay)
+        let dString = dateString ?? formatter.string(from: startOfDay)
         
         self.id = id ?? "\(goalId)_\(dString)"
         self.goalId = goalId
+        self.authorId = authorId
+        self.sourceLogId = sourceLogId
         self.date = startOfDay
         self.dateString = dString
         self.selectedActivities = selectedActivities
@@ -98,6 +105,8 @@ struct DailyLog: Identifiable, Codable, Equatable {
             "createdAt": createdVal,
             "updatedAt": updatedVal
         ]
+        if let authorId { dict["authorId"] = authorId }
+        if let sourceLogId { dict["sourceLogId"] = sourceLogId }
         if let note = note {
             dict["note"] = note
         }
@@ -116,6 +125,8 @@ struct DailyLog: Identifiable, Codable, Equatable {
         }
         
         self.id = id
+        self.authorId = dictionary["authorId"] as? String
+        self.sourceLogId = dictionary["sourceLogId"] as? String
         self.goalId = goalId
         self.dateString = dateString
         

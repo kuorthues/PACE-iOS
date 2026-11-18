@@ -16,9 +16,11 @@ import SwiftUI
 struct LogProgressView: View {
     let goal: PACEGoal
     var onSaved: (() -> Void)? = nil
+    let sharedGoalId: String?
     
     @ObservedObject var logService = DailyLogService.shared
     @ObservedObject var evidenceService = EvidenceService.shared
+    @ObservedObject var sharedGoalService = SharedGoalService.shared
     @Environment(\.dismiss) private var dismiss
     
     @State private var selectedDate: Date = Date()
@@ -29,6 +31,8 @@ struct LogProgressView: View {
     @State private var isExistingEntry: Bool = false
     @State private var showDeleteConfirmation: Bool = false
     @State private var errorMessage: String? = nil
+    @State private var currentLogId: String?
+    @State private var loadedSharedLog: DailyLog?
     
     // Evidence State
     @State private var selectedEvidenceImage: UIImage? = nil
@@ -39,8 +43,14 @@ struct LogProgressView: View {
     
     private let presetDurations = [15, 30, 45, 60, 90, 120]
     
-    init(goal: PACEGoal, initialDate: Date = Date(), onSaved: (() -> Void)? = nil) {
+    init(
+        goal: PACEGoal,
+        initialDate: Date = Date(),
+        sharedGoalId: String? = nil,
+        onSaved: (() -> Void)? = nil
+    ) {
         self.goal = goal
+        self.sharedGoalId = sharedGoalId
         self.onSaved = onSaved
         _selectedDate = State(initialValue: initialDate)
     }
@@ -119,7 +129,19 @@ struct LogProgressView: View {
                         .padding(12)
                         .paceCard()
                         .onChange(of: selectedDate) {
-                            checkExistingLog()
+                            if let sharedGoalId {
+                                loadedSharedLog = nil
+                                Task {
+                                    do {
+                                        loadedSharedLog = try await sharedGoalService.fetchLog(for: sharedGoalId, date: selectedDate)
+                                    } catch {
+                                        errorMessage = error.localizedDescription
+                                    }
+                                    checkExistingLog()
+                                }
+                            } else {
+                                checkExistingLog()
+                            }
                         }
                     }
                     
@@ -285,7 +307,16 @@ struct LogProgressView: View {
                 }
             }
             .task {
-                _ = await evidenceService.fetchEvidence(for: goal.id)
+                for evidenceGoalId in evidenceGoalIds {
+                    _ = await evidenceService.fetchEvidence(for: evidenceGoalId)
+                }
+                if let sharedGoalId {
+                    do {
+                        loadedSharedLog = try await sharedGoalService.fetchLog(for: sharedGoalId, date: selectedDate)
+                    } catch {
+                        errorMessage = error.localizedDescription
+                    }
+                }
                 if selectedActivities.isEmpty, let first = goal.activityTypes.first {
                     selectedActivities.insert(first)
                 }
@@ -298,10 +329,19 @@ struct LogProgressView: View {
             ) {
                 Button("DELETE", role: .destructive) {
                     let dString = DailyLog.dateFormatter.string(from: selectedDate)
+                    let logId = currentLogId ?? dString
                     Task {
-                        try? await logService.deleteLog(id: dString, goalId: goal.id)
-                        onSaved?()
-                        dismiss()
+                        do {
+                            if let sharedGoalId {
+                                try await sharedGoalService.deleteLog(goalId: sharedGoalId, logId: logId)
+                            } else {
+                                try await logService.deleteLog(id: dString, goalId: goal.id)
+                            }
+                            onSaved?()
+                            dismiss()
+                        } catch {
+                            errorMessage = error.localizedDescription
+                        }
                     }
                 }
                 Button("CANCEL", role: .cancel) {}
@@ -315,41 +355,70 @@ struct LogProgressView: View {
         let dString = DailyLog.dateFormatter.string(from: Calendar.current.startOfDay(for: selectedDate))
         evidenceToRemoveIds = []
         selectedEvidenceImage = nil
-        
-        if let existing = logService.fetchLog(for: goal.id, date: selectedDate) {
+
+        let existing: DailyLog?
+        if let sharedGoalId {
+            let uid = AuthService.shared.currentUser?.id
+            existing = loadedSharedLog ?? (sharedGoalService.logsByGoal[sharedGoalId] ?? [])
+                .filter { $0.authorId == uid && $0.dateString == dString }
+                .sorted { $0.id < $1.id }
+                .first
+        } else {
+            existing = logService.fetchLog(for: goal.id, date: selectedDate)
+        }
+
+        currentLogId = existing?.id
+        if let existing {
             isExistingEntry = true
             selectedActivities = Set(existing.selectedActivities)
             durationMinutes = existing.durationMinutes
             customDurationInput = "\(existing.durationMinutes)"
             note = existing.note ?? ""
-            existingEvidenceItems = loadEvidenceItems(logId: existing.id, dateString: dString)
+            existingEvidenceItems = loadEvidenceItems(
+                logId: existing.sourceLogId ?? existing.id,
+                dateString: dString
+            )
         } else {
             isExistingEntry = false
             existingEvidenceItems = loadEvidenceItems(logId: dString, dateString: dString)
         }
-        
         evidenceCaption = ""
     }
-    
-    private func loadEvidenceItems(logId: String, dateString: String) -> [EvidenceItem] {
-        var items = evidenceService.fetchEvidenceItems(forGoal: goal.id, logId: logId)
-        if logId != dateString {
-            items.append(contentsOf: evidenceService.fetchEvidenceItems(forGoal: goal.id, logId: dateString))
+
+    private var evidenceGoalIds: [String] {
+        var ids = [goal.id]
+        if let sharedGoalId,
+           let sourceGoalId = sharedGoalService.goals.first(where: { $0.id == sharedGoalId })?.sourceGoalId,
+           !ids.contains(sourceGoalId) {
+            ids.append(sourceGoalId)
         }
-        
+        return ids
+    }
+
+    private func loadEvidenceItems(logId: String, dateString: String) -> [EvidenceItem] {
+        var items: [EvidenceItem] = []
+        for evidenceGoalId in evidenceGoalIds {
+            items.append(contentsOf: evidenceService.fetchEvidenceItems(forGoal: evidenceGoalId, logId: logId))
+            if logId != dateString {
+                items.append(contentsOf: evidenceService.fetchEvidenceItems(forGoal: evidenceGoalId, logId: dateString))
+            }
+        }
         var seenIds = Set<String>()
         return items
             .filter { seenIds.insert($0.id).inserted }
             .sorted {
-                if $0.createdAt == $1.createdAt {
-                    return $0.id < $1.id
-                }
+                if $0.createdAt == $1.createdAt { return $0.id < $1.id }
                 return $0.createdAt < $1.createdAt
             }
     }
     
+    
     private func submitLog() {
         errorMessage = nil
+        if sharedGoalId == nil && sharedGoalService.sourceGoalIdsInProgress.contains(goal.id) {
+            errorMessage = "This goal is paused while its shared copy is being prepared."
+            return
+        }
         guard !selectedActivities.isEmpty else {
             errorMessage = "Please select at least one activity."
             return
@@ -358,33 +427,31 @@ struct LogProgressView: View {
             errorMessage = "Duration must be at least 1 minute."
             return
         }
-        
+
         isSaving = true
         Task {
             defer { isSaving = false }
             do {
-                let savedLog = try await logService.saveLog(
-                    goalId: goal.id,
+                let savedLog = try await persistLog(
                     date: selectedDate,
                     selectedActivities: Array(selectedActivities),
                     durationMinutes: durationMinutes,
                     note: note.isEmpty ? nil : note
                 )
-                
+
                 for item in existingEvidenceItems where evidenceToRemoveIds.contains(item.id) {
                     try? await evidenceService.deleteEvidence(item)
                 }
-                
+
                 if let imageToUpload = selectedEvidenceImage {
                     do {
                         let evidenceItem = try await evidenceService.saveEvidence(
-                            goalId: goal.id,
-                            logId: savedLog.id,
+                            goalId: evidenceGoalId(for: savedLog),
+                            logId: savedLog.sourceLogId ?? savedLog.id,
                             image: imageToUpload,
                             caption: evidenceCaption.isEmpty ? nil : evidenceCaption
                         )
-                        _ = try await logService.saveLog(
-                            goalId: goal.id,
+                        _ = try await persistLog(
                             date: selectedDate,
                             selectedActivities: Array(selectedActivities),
                             durationMinutes: durationMinutes,
@@ -401,8 +468,7 @@ struct LogProgressView: View {
                     let retainedEvidence = existingEvidenceItems.first {
                         !evidenceToRemoveIds.contains($0.id)
                     }
-                    _ = try await logService.saveLog(
-                        goalId: goal.id,
+                    _ = try await persistLog(
                         date: selectedDate,
                         selectedActivities: Array(selectedActivities),
                         durationMinutes: durationMinutes,
@@ -411,12 +477,51 @@ struct LogProgressView: View {
                         clearEvidenceReference: retainedEvidence == nil
                     )
                 }
-                
+
                 onSaved?()
                 dismiss()
             } catch {
                 errorMessage = error.localizedDescription
             }
         }
+    }
+
+    private func persistLog(
+        date: Date,
+        selectedActivities: [String],
+        durationMinutes: Int,
+        note: String?,
+        evidenceId: String? = nil,
+        clearEvidenceReference: Bool = false
+    ) async throws -> DailyLog {
+        if let sharedGoalId {
+            return try await sharedGoalService.saveLog(
+                goalId: sharedGoalId,
+                date: date,
+                selectedActivities: selectedActivities,
+                durationMinutes: durationMinutes,
+                note: note,
+                evidenceId: evidenceId,
+                clearEvidenceReference: clearEvidenceReference
+            )
+        }
+        return try await logService.saveLog(
+            goalId: goal.id,
+            date: date,
+            selectedActivities: selectedActivities,
+            durationMinutes: durationMinutes,
+            note: note,
+            evidenceId: evidenceId,
+            clearEvidenceReference: clearEvidenceReference
+        )
+    }
+
+    private func evidenceGoalId(for log: DailyLog) -> String {
+        guard log.sourceLogId != nil,
+              let sharedGoalId,
+              let sourceGoalId = sharedGoalService.goals.first(where: { $0.id == sharedGoalId })?.sourceGoalId else {
+            return goal.id
+        }
+        return sourceGoalId
     }
 }

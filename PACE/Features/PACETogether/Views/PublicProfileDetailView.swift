@@ -3,6 +3,7 @@ import SwiftUI
 struct PublicProfileDetailView: View {
     @Environment(\.dismiss) private var dismiss
     let profile: PublicProfile
+    @State private var isShowingInvitationFlow = false
 
     var body: some View {
         NavigationStack {
@@ -47,6 +48,23 @@ struct PublicProfileDetailView: View {
                     .background(PACETheme.surface)
                     .overlay(Rectangle().stroke(PACETheme.border, lineWidth: 1))
 
+
+                    Button {
+                        isShowingInvitationFlow = true
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "person.2")
+                            Text("INVITE TO A GOAL")
+                        }
+                        .font(PACETextStyle.pixelMetadata)
+                        .foregroundColor(PACETheme.textOnAccent)
+                        .frame(maxWidth: .infinity, minHeight: 48)
+                        .background(PACETheme.accent)
+                        .overlay(Rectangle().stroke(PACETheme.accent, lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(profile.userId == AuthService.shared.currentUser?.id)
+
                     Text("PROFILE DETAILS ONLY. PRIVATE GOALS, LOGS, AND EVIDENCE STAY PRIVATE.")
                         .font(PACETextStyle.pixelMetadata)
                         .foregroundColor(PACETheme.mutedText)
@@ -63,6 +81,9 @@ struct PublicProfileDetailView: View {
                         .font(PACETextStyle.pixelMetadata)
                         .foregroundColor(PACETheme.accent)
                 }
+            }
+            .sheet(isPresented: $isShowingInvitationFlow) {
+                InvitationFlowView(profile: profile)
             }
         }
     }

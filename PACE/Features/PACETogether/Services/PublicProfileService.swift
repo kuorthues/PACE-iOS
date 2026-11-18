@@ -48,15 +48,18 @@ final class PublicProfileService: ObservableObject {
                     .collection("publicProfiles")
                     .document(uid)
                     .getDocument()
+                guard authoritativeUserId() == uid else { return nil }
                 currentProfile = snapshot.data().flatMap { PublicProfile(id: uid, dictionary: $0) }
                 return currentProfile
             } catch {
+                guard authoritativeUserId() == uid else { return nil }
                 errorMessage = "Could not load your PACE profile."
                 currentProfile = nil
                 return nil
             }
         }
         #endif
+        guard authoritativeUserId() == uid else { return nil }
 
         currentProfile = loadLocalProfile(for: uid)
         return currentProfile
@@ -129,6 +132,9 @@ final class PublicProfileService: ObservableObject {
                         ])
 
                     }
+                    guard authoritativeUserId() == uid else {
+                        throw PublicProfileError.notAuthenticated
+                    }
                     currentProfile = profile
                     saveLocalProfile(profile, for: uid)
                     statusMessage = "PROFILE SAVED"
@@ -167,6 +173,7 @@ final class PublicProfileService: ObservableObject {
                     .whereField("isDiscoverable", isEqualTo: true)
                     .limit(to: max(1, min(limit * 2, 12)))
                     .getDocuments()
+                guard authoritativeUserId() == uid else { return }
                 suggestions = decodeProfiles(snapshot.documents)
                     .filter { $0.userId != uid }
                     .sorted { $0.usernameNormalized < $1.usernameNormalized }
@@ -174,12 +181,14 @@ final class PublicProfileService: ObservableObject {
                     .map { $0 }
                 return
             } catch {
+                guard authoritativeUserId() == uid else { return }
                 errorMessage = "Could not load PACE Together profiles."
                 suggestions = []
                 return
             }
         }
         #endif
+        guard authoritativeUserId() == uid else { return }
 
         suggestions = []
     }
@@ -208,17 +217,20 @@ final class PublicProfileService: ObservableObject {
                     .whereField("usernameNormalized", isLessThan: end)
                     .limit(to: max(1, min(limit, 50)))
                     .getDocuments()
+                guard authoritativeUserId() == uid else { return }
                 searchResults = decodeProfiles(snapshot.documents)
                     .filter { $0.userId != uid }
                     .sorted { $0.usernameNormalized < $1.usernameNormalized }
                 return
             } catch {
+                guard authoritativeUserId() == uid else { return }
                 errorMessage = "Search is unavailable right now."
                 searchResults = []
                 return
             }
         }
         #endif
+        guard authoritativeUserId() == uid else { return }
 
         searchResults = []
     }
@@ -235,12 +247,14 @@ final class PublicProfileService: ObservableObject {
                     .collection("publicProfiles")
                     .document(userId)
                     .getDocument()
+                guard authoritativeUserId() == uid else { return nil }
                 guard let data = snapshot.data(), let profile = PublicProfile(id: userId, dictionary: data) else {
                     return nil
                 }
                 guard profile.userId == uid || profile.isDiscoverable else { return nil }
                 return profile
             } catch {
+                guard authoritativeUserId() == uid else { return nil }
                 errorMessage = "This profile is unavailable."
                 return nil
             }

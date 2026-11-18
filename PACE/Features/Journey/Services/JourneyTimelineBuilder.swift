@@ -20,7 +20,57 @@ struct JourneySummaryMetrics: Equatable {
     let consistencyPercentage: Double
 }
 
+struct SharedJourneyEntry: Identifiable, Equatable {
+    let id: String
+    let date: Date
+    let dateString: String
+    let logs: [DailyLog]
+    let isDeadline: Bool
+}
+
 enum JourneyTimelineBuilder {
+
+    /// Builds only completed shared contributions and one final deadline milestone.
+    static func buildSharedTimeline(
+        goal: PACEGoal,
+        logs: [DailyLog],
+        asOf: Date = Date(),
+        calendar: Calendar = .current
+    ) -> [SharedJourneyEntry] {
+        let today = calendar.startOfDay(for: asOf)
+        let todayString = DailyLog.dateFormatter.string(from: today)
+        var logsByDate: [String: [DailyLog]] = [:]
+        for log in logs where log.dateString <= todayString {
+            logsByDate[log.dateString, default: []].append(log)
+        }
+
+        var entries = logsByDate.keys.sorted().compactMap { dateString -> SharedJourneyEntry? in
+            guard let date = DailyLog.dateFormatter.date(from: dateString),
+                  let dayLogs = logsByDate[dateString] else { return nil }
+            let sortedLogs = dayLogs.sorted {
+                if $0.authorId != $1.authorId { return ($0.authorId ?? "") < ($1.authorId ?? "") }
+                if $0.createdAt != $1.createdAt { return $0.createdAt < $1.createdAt }
+                return $0.id < $1.id
+            }
+            return SharedJourneyEntry(
+                id: dateString,
+                date: date,
+                dateString: dateString,
+                logs: sortedLogs,
+                isDeadline: false
+            )
+        }
+        let deadline = calendar.startOfDay(for: goal.targetDate)
+        let deadlineString = DailyLog.dateFormatter.string(from: deadline)
+        entries.append(SharedJourneyEntry(
+            id: "deadline_\(deadlineString)",
+            date: deadline,
+            dateString: deadlineString,
+            logs: [],
+            isDeadline: true
+        ))
+        return entries
+    }
     
     /// Generates a complete sequence of `JourneyDay` items spanning every day from goal start to target date.
     static func buildTimeline(

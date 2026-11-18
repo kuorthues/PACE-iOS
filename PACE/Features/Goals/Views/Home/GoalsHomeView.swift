@@ -22,15 +22,23 @@ struct GoalsHomeView: View {
     @ObservedObject var logService = DailyLogService.shared
     @ObservedObject var evidenceService = EvidenceService.shared
     @ObservedObject var profileService = PublicProfileService.shared
+    @ObservedObject var sharedGoalService = SharedGoalService.shared
+    @ObservedObject var invitationService = GoalInvitationService.shared
+    @ObservedObject private var authService = AuthService.shared
     
     @State private var showCreateGoalSheet = false
     @State private var selectedGoalForDetail: PACEGoal? = nil
     @State private var selectedGoalForLog: PACEGoal? = nil
     @State private var selectedGoalForJourney: PACEGoal? = nil
     @State private var selectedPartnerProfile: PublicProfile? = nil
+    @State private var selectedProfileForInvite: PublicProfile? = nil
+    @State private var selectedSharedGoal: SharedGoal? = nil
+    @State private var activePartnerProfiles: [String: PublicProfile] = [:]
     @State private var navigateToDetail = false
     @State private var navigateToJourney = false
     @State private var showPartnerDiscovery = false
+    @State private var navigateToSharedGoal = false
+    @State private var showInvitationManagement = false
     @ScaledMetric(relativeTo: .largeTitle) private var countdownFontSize: CGFloat = 64
     
     var body: some View {
@@ -40,18 +48,16 @@ struct GoalsHomeView: View {
                     // Header: GOALS ... + NEW GOAL
                     headerSection
                     
-                    if goalService.goals.isEmpty {
+                    if visibleSoloGoals.isEmpty && sharedGoalService.goals.isEmpty && sharedGoalService.errorMessage == nil {
                         emptyStateView
                     } else {
-                        // Primary Goal Section
-                        if let primaryGoal = goalService.goals.first {
+                        if let primaryGoal = visibleSoloGoals.first {
                             primaryGoalSection(primaryGoal)
                         }
-                        
-                        // Secondary Goals Section
-                        if goalService.goals.count > 1 {
+                        if visibleSoloGoals.count > 1 {
                             secondaryGoalsSection
                         }
+                        sharedGoalsSection
                     }
                     paceTogetherSection
                     
@@ -62,13 +68,46 @@ struct GoalsHomeView: View {
             }
             .background(PACETheme.background.ignoresSafeArea())
             .navigationBarHidden(true)
-            .task {
+            .task(id: authService.currentUser?.id) {
+                let userId = AuthService.shared.currentUser?.id
+                sharedGoalService.startListening(for: userId)
+                invitationService.startListening(for: userId)
                 await goalService.fetchActiveGoals()
-                for g in goalService.goals {
-                    _ = await logService.fetchLogs(for: g.id)
+                for goal in goalService.goals {
+                    _ = await logService.fetchLogs(for: goal.id)
                 }
-                PACEWidgetSyncService.shared.syncPrimaryGoal(goals: goalService.goals, logsByGoal: logService.logsByGoal)
+                PACEWidgetSyncService.shared.syncPrimaryGoal(goals: visibleSoloGoals, logsByGoal: logService.logsByGoal)
                 await profileService.fetchSuggestions(limit: 3)
+            }
+            .task(id: sharedGoalService.goals) {
+                guard let userId = authService.currentUser?.id else {
+                    activePartnerProfiles = [:]
+                    return
+                }
+                let partnerIds = Set(sharedGoalService.goals.flatMap(\.memberIds).filter { $0 != userId })
+                var profiles: [String: PublicProfile] = [:]
+                for partnerId in partnerIds {
+                    if let profile = await PublicProfileService.shared.fetchPublicProfile(userId: partnerId) {
+                        profiles[partnerId] = profile
+                    }
+                }
+                guard !Task.isCancelled, authService.currentUser?.id == userId else { return }
+                activePartnerProfiles = profiles
+            }
+            .onChange(of: authService.currentUser?.id) { _, _ in
+                showCreateGoalSheet = false
+                selectedGoalForDetail = nil
+                selectedGoalForLog = nil
+                selectedGoalForJourney = nil
+                selectedPartnerProfile = nil
+                selectedProfileForInvite = nil
+                selectedSharedGoal = nil
+                navigateToDetail = false
+                navigateToJourney = false
+                showPartnerDiscovery = false
+                navigateToSharedGoal = false
+                showInvitationManagement = false
+                activePartnerProfiles = [:]
             }
             .sheet(isPresented: $showCreateGoalSheet) {
                 CreateGoalFlowView(
@@ -79,7 +118,7 @@ struct GoalsHomeView: View {
                     onFinish: {
                         Task {
                             await goalService.fetchActiveGoals()
-                            PACEWidgetSyncService.shared.syncPrimaryGoal(goals: goalService.goals, logsByGoal: logService.logsByGoal)
+                            PACEWidgetSyncService.shared.syncPrimaryGoal(goals: visibleSoloGoals, logsByGoal: logService.logsByGoal)
                         }
                     }
                 )
@@ -88,7 +127,7 @@ struct GoalsHomeView: View {
                 LogProgressView(goal: goal) {
                     Task {
                         _ = await logService.fetchLogs(for: goal.id)
-                        PACEWidgetSyncService.shared.syncPrimaryGoal(goals: goalService.goals, logsByGoal: logService.logsByGoal)
+                        PACEWidgetSyncService.shared.syncPrimaryGoal(goals: visibleSoloGoals, logsByGoal: logService.logsByGoal)
                     }
                 }
             }
@@ -102,13 +141,32 @@ struct GoalsHomeView: View {
                     JourneyDetailView(goal: goal)
                 }
             }
+            .navigationDestination(isPresented: $navigateToSharedGoal) {
+                if let goal = selectedSharedGoal {
+                    SharedGoalDetailView(goal: goal)
+                }
+            }
+            .navigationDestination(isPresented: $showInvitationManagement) {
+                InvitationManagementView()
+            }
             .navigationDestination(isPresented: $showPartnerDiscovery) {
                 PartnerDiscoveryView()
             }
             .sheet(item: $selectedPartnerProfile) { profile in
                 PublicProfileDetailView(profile: profile)
             }
+            .sheet(item: $selectedProfileForInvite) { profile in
+                InvitationFlowView(profile: profile)
+            }
         }
+    }
+
+    private var visibleSoloGoals: [PACEGoal] {
+        goalService.goals.filter { !sharedGoalService.sourceGoalIdsInProgress.contains($0.id) }
+    }
+    private var activePartnerIds: [String] {
+        guard let userId = authService.currentUser?.id else { return [] }
+        return Array(Set(sharedGoalService.goals.flatMap(\.memberIds).filter { $0 != userId })).sorted()
     }
     
     // MARK: - Header
@@ -352,7 +410,7 @@ struct GoalsHomeView: View {
                 .tracking(2.0)
                 .padding(.bottom, 12)
             
-            ForEach(goalService.goals.dropFirst()) { goal in
+            ForEach(visibleSoloGoals.dropFirst()) { goal in
                 let logs = logService.logsByGoal[goal.id] ?? []
                 let metrics = GoalAnalytics.compute(goal: goal, logs: logs)
                 
@@ -404,6 +462,29 @@ struct GoalsHomeView: View {
         }
     }
 
+    private var sharedGoalsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if let error = sharedGoalService.errorMessage {
+                Text(error)
+                    .font(PACETextStyle.pixelMetadata)
+                    .foregroundColor(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if !sharedGoalService.goals.isEmpty {
+                Text("SHARED TARGETS")
+                    .font(PACETextStyle.pixelLabel)
+                    .foregroundColor(PACETheme.secondaryText)
+                    .tracking(1.5)
+                ForEach(sharedGoalService.goals) { goal in
+                    SharedGoalCard(goal: goal) {
+                        selectedSharedGoal = goal
+                        navigateToSharedGoal = true
+                    }
+                }
+            }
+        }
+    }
+
     // MARK: - PACE Together
 
     private var paceTogetherSection: some View {
@@ -414,6 +495,12 @@ struct GoalsHomeView: View {
                     .foregroundColor(PACETheme.secondaryText)
                     .tracking(2.0)
                 Spacer()
+                Button("INVITATIONS \(invitationService.invitations.filter { $0.status == .pending }.count)") {
+                    showInvitationManagement = true
+                }
+                .font(PACETextStyle.pixelMetadata)
+                .foregroundColor(PACETheme.primaryText)
+                .buttonStyle(.plain)
                 Button("FIND PARTNERS") {
                     showPartnerDiscovery = true
                 }
@@ -422,6 +509,42 @@ struct GoalsHomeView: View {
                 .buttonStyle(.plain)
                 .accessibilityHint("Opens username search for discoverable PACE profiles")
             }
+            if !activePartnerIds.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("ACTIVE PARTNERS")
+                        .font(PACETextStyle.pixelLabel)
+                        .foregroundColor(PACETheme.secondaryText)
+                    ForEach(activePartnerIds, id: \.self) { partnerId in
+                        let sharedCount = sharedGoalService.goals.filter { $0.memberIds.contains(partnerId) }.count
+                        Button {
+                            if let profile = activePartnerProfiles[partnerId] {
+                                selectedPartnerProfile = profile
+                            }
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: "person.2.fill")
+                                    .foregroundColor(PACETheme.accent)
+                                Text(activePartnerProfiles[partnerId].map {
+                                    $0.displayName.isEmpty ? "@\($0.username)" : $0.displayName
+                                } ?? "PACE MEMBER")
+                                    .font(PACETextStyle.displaySmall)
+                                    .foregroundColor(PACETheme.primaryText)
+                                    .lineLimit(1)
+                                Spacer()
+                                Text("\(sharedCount) SHARED")
+                                    .font(PACETextStyle.pixelMetadata)
+                                    .foregroundColor(PACETheme.secondaryText)
+                            }
+                            .padding(10)
+                            .background(PACETheme.surface)
+                            .overlay(Rectangle().stroke(PACETheme.border, lineWidth: 1))
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(activePartnerProfiles[partnerId] == nil)
+                    }
+                }
+            }
+
 
             if profileService.isLoading && profileService.suggestions.isEmpty {
                 ProgressView()
@@ -445,9 +568,11 @@ struct GoalsHomeView: View {
                 .overlay(Rectangle().stroke(PACETheme.border, lineWidth: 1))
             } else {
                 ForEach(profileService.suggestions.prefix(3)) { profile in
-                    PACEProfileCard(profile: profile) {
-                        selectedPartnerProfile = profile
-                    }
+                    PACEProfileCard(
+                        profile: profile,
+                        onViewProfile: { selectedPartnerProfile = profile },
+                        onInvite: { selectedProfileForInvite = profile }
+                    )
                 }
             }
         }
