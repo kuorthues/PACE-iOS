@@ -36,6 +36,19 @@ enum PACETab: String, CaseIterable, Identifiable {
             return "gearshape"
         }
     }
+
+    var selectedIconName: String {
+        switch self {
+        case .goals:
+            return "target"
+        case .journey:
+            return "figure.walk"
+        case .insights:
+            return "chart.bar.xaxis"
+        case .settings:
+            return "gearshape.fill"
+        }
+    }
 }
 
 struct MainTabView: View {
@@ -91,15 +104,26 @@ struct MainTabView: View {
         
         selectedTab = .goals
         
-        if host == "goal" || url.path == "/goal" {
-            if let goalId = goalId,
-               let found = GoalService.shared.goals.first(where: { $0.id == goalId }) {
-                deepLinkedGoal = found
+        let isLogDeepLink = host == "log" || url.path == "/log"
+        let isGoalDeepLink = host == "goal" || url.path == "/goal"
+        guard let goalId, isLogDeepLink || isGoalDeepLink else { return }
+
+        func present(_ goal: PACEGoal) {
+            if isLogDeepLink {
+                deepLinkedLogGoal = goal
+            } else {
+                deepLinkedGoal = goal
             }
-        } else if host == "log" || url.path == "/log" {
-            if let goalId = goalId,
-               let found = GoalService.shared.goals.first(where: { $0.id == goalId }) {
-                deepLinkedLogGoal = found
+        }
+
+        if let found = GoalService.shared.goals.first(where: { $0.id == goalId }) {
+            present(found)
+        } else {
+            Task {
+                await GoalService.shared.fetchActiveGoals()
+                if let found = GoalService.shared.goals.first(where: { $0.id == goalId }) {
+                    present(found)
+                }
             }
         }
     }
@@ -117,21 +141,29 @@ struct MainTabView: View {
                         selectedTab = tab
                     }) {
                         VStack(spacing: 6) {
+                            Image(systemName: selectedTab == tab ? tab.selectedIconName : tab.iconName)
+                                .font(.system(size: 16, weight: selectedTab == tab ? .semibold : .regular))
+                                .foregroundColor(selectedTab == tab ? PACETheme.accent : PACETheme.secondaryText)
+                                .frame(height: 18)
+                                .accessibilityHidden(true)
+
                             Text(tab.rawValue.uppercased())
-                                .font(.system(size: 11, weight: .bold, design: .monospaced))
-                                .tracking(1.5)
+                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                .tracking(1.3)
                                 .foregroundColor(selectedTab == tab ? PACETheme.accent : PACETheme.secondaryText)
                             
-                            // Thin #A7FF19 underline directly beneath selected tab text
                             Rectangle()
                                 .fill(selectedTab == tab ? PACETheme.accent : Color.clear)
                                 .frame(width: 28, height: 2)
                         }
                         .frame(maxWidth: .infinity)
-                        .padding(.top, 14)
-                        .padding(.bottom, 10)
+                        .frame(minHeight: 54)
+                        .padding(.top, 8)
+                        .padding(.bottom, 8)
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("\(tab.rawValue) tab")
+                    .accessibilityAddTraits(selectedTab == tab ? .isSelected : [])
                 }
             }
             .background(PACETheme.background)

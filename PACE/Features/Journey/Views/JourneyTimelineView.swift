@@ -224,24 +224,23 @@ struct JourneyOverviewList: View {
                     .buttonStyle(.plain)
                     .accessibilityLabel("\(day.formattedFullDate), \(day.state.title), day \(day.dayIndex)")
                     
-                    if day.state == .completedWithEvidence,
-                       let evidence = day.evidenceItems.first {
-                        Button {
-                            onViewEvidence?(evidence)
-                        } label: {
-                            ZStack(alignment: .bottomTrailing) {
-                                JourneyEvidencePhoto(evidence: evidence, size: 64)
-                                if day.evidenceItems.count > 1 {
-                                    Text("+\(day.evidenceItems.count - 1)")
-                                        .font(PACETextStyle.pixelMetadata)
-                                        .foregroundColor(.white)
-                                        .padding(3)
-                                        .background(PACEColor.background)
+                    if !day.evidenceItems.isEmpty {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 6) {
+                                ForEach(day.evidenceItems) { evidence in
+                                    Button {
+                                        onViewEvidence?(evidence)
+                                    } label: {
+                                        JourneyEvidencePhoto(evidence: evidence, size: 58)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .accessibilityLabel("View photo evidence from \(day.formattedFullDate)")
                                 }
                             }
                         }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("View photo evidence, \(day.evidenceItems.count) photos")
+                        .frame(width: 64)
+                        .accessibilityElement(children: .contain)
+                        .accessibilityLabel("\(day.evidenceItems.count) photo evidence items")
                     }
                 }
                 .frame(minHeight: 78)

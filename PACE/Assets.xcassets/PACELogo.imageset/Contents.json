@@ -1,0 +1,13 @@
+{
+  "images" : [
+    {
+      "filename" : "PACE_Logo_Transparent.png",
+      "idiom" : "universal",
+      "scale" : "1x"
+    }
+  ],
+  "info" : {
+    "author" : "xcode",
+    "version" : 1
+  }
+}

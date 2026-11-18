@@ -84,10 +84,11 @@ final class EvidenceService: ObservableObject {
     }
     
     private func saveLocalMetadata(_ items: [EvidenceItem], for goalId: String, uid: String) {
-        if let encoded = try? JSONEncoder().encode(items) {
+        let scopedItems = items.filter { $0.userId == uid && $0.goalId == goalId }
+        if let encoded = try? JSONEncoder().encode(scopedItems) {
             UserDefaults.standard.set(encoded, forKey: localKey(for: goalId, uid: uid))
         }
-        self.evidenceByGoal[goalId] = items.sorted(by: { $0.createdAt > $1.createdAt })
+        self.evidenceByGoal[goalId] = scopedItems.sorted(by: { $0.createdAt > $1.createdAt })
     }
     
     func clearInMemoryCache() {
@@ -129,8 +130,8 @@ final class EvidenceService: ObservableObject {
             }
         }
         #endif
-        
         let local = loadLocalMetadata(for: goalId, uid: uid)
+            .filter { $0.userId == uid && $0.goalId == goalId }
         self.evidenceByGoal[goalId] = local
         return local
     }
@@ -191,9 +192,11 @@ final class EvidenceService: ObservableObject {
         do {
             try compressed.data.write(to: fileURL, options: .atomic)
         } catch {
-            print("Warning: failed to write local evidence file: \(error)")
+            let writeError = AuthError.validation("Unable to persist photo evidence locally.")
+            self.errorMessage = writeError.localizedDescription
+            throw writeError
         }
-        memoryCache.setObject(compressed.image, forKey: item.id as NSString)
+        memoryCache.setObject(compressed.image, forKey: "\(uid)|\(item.id)" as NSString)
         
         // 3. Save metadata to Firestore (No image bytes in Firestore)
 #if canImport(FirebaseFirestore) && canImport(FirebaseAuth)
@@ -249,18 +252,28 @@ final class EvidenceService: ObservableObject {
             self.errorMessage = error.localizedDescription
             throw error
         }
+        guard item.userId == uid else {
+            let error = AuthError.validation("You cannot delete evidence owned by another user.")
+            self.errorMessage = error.localizedDescription
+            throw error
+        }
         
         // 1. Delete from Firestore
 #if canImport(FirebaseFirestore) && canImport(FirebaseAuth)
         if AuthService.shared.isFirebaseConfigured, let authUid = Auth.auth().currentUser?.uid, authUid == uid {
-            try? await Firestore.firestore()
-                .collection("users")
-                .document(uid)
-                .collection("goals")
-                .document(item.goalId)
-                .collection("evidence")
-                .document(item.id)
-                .delete()
+            do {
+                try await Firestore.firestore()
+                    .collection("users")
+                    .document(uid)
+                    .collection("goals")
+                    .document(item.goalId)
+                    .collection("evidence")
+                    .document(item.id)
+                    .delete()
+            } catch {
+                self.errorMessage = "Failed to delete evidence metadata: \(error.localizedDescription)"
+                throw error
+            }
         }
         #endif
         
@@ -269,14 +282,37 @@ final class EvidenceService: ObservableObject {
         let fileURL = localFileURL(for: item, uid: item.userId)
         try? FileManager.default.removeItem(at: fileURL)
         
-        // 3. Update local metadata
+        // 3. Update local metadata and remove any stale DailyLog reference.
         var currentItems = loadLocalMetadata(for: item.goalId, uid: uid)
         currentItems.removeAll(where: { $0.id == item.id })
         saveLocalMetadata(currentItems, for: item.goalId, uid: uid)
+        await DailyLogService.shared.clearEvidenceReference(
+            goalId: item.goalId,
+            logId: item.logId,
+            evidenceId: item.id
+        )
     }
     func clearEvidence(for goalId: String, logId: String) async {
         for item in fetchEvidenceItems(forGoal: goalId, logId: logId) {
             try? await deleteEvidence(item)
         }
+    }
+
+    func deleteAllEvidence(for goalId: String) async {
+        guard let uid = authoritativeUserId() else { return }
+        let cached = evidenceByGoal[goalId] ?? []
+        let fetched = await fetchEvidence(for: goalId)
+        var itemsById: [String: EvidenceItem] = [:]
+        for item in cached + fetched where item.userId == uid && item.goalId == goalId {
+            itemsById[item.id] = item
+        }
+        let items = Array(itemsById.values)
+        for item in items {
+            try? await deleteEvidence(item)
+        }
+        evidenceByGoal[goalId] = []
+        UserDefaults.standard.removeObject(forKey: localKey(for: goalId, uid: uid))
+        let directory = localDirectoryURL(for: goalId, uid: uid)
+        try? FileManager.default.removeItem(at: directory)
     }
 }

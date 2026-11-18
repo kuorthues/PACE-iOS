@@ -259,4 +259,47 @@ final class DailyLogService: ObservableObject {
         await EvidenceService.shared.clearEvidence(for: goalId, logId: id)
         syncWidget()
     }
+    func clearEvidenceReference(goalId: String, logId: String, evidenceId: String) async {
+        guard let uid = authoritativeUserId() else { return }
+        var logs = logsByGoal[goalId] ?? loadLocalLogs(for: goalId, uid: uid)
+        guard let index = logs.firstIndex(where: {
+            ($0.id == logId || $0.dateString == logId) && $0.evidenceId == evidenceId
+        }) else { return }
+
+        logs[index].evidenceId = nil
+
+#if canImport(FirebaseFirestore) && canImport(FirebaseAuth)
+        if AuthService.shared.isFirebaseConfigured,
+           let authUid = Auth.auth().currentUser?.uid,
+           authUid == uid {
+            try? await Firestore.firestore()
+                .collection("users")
+                .document(uid)
+                .collection("goals")
+                .document(goalId)
+                .collection("logs")
+                .document(logs[index].id)
+                .updateData(["evidenceId": FieldValue.delete()])
+        }
+#endif
+
+        saveLocalLogs(logs, for: goalId, uid: uid)
+        syncWidget()
+    }
+
+    func deleteAllLogs(for goalId: String) async {
+        guard let uid = authoritativeUserId() else { return }
+        let logs: [DailyLog]
+        if let cached = logsByGoal[goalId] {
+            logs = cached
+        } else {
+            logs = await fetchLogs(for: goalId)
+        }
+        for log in logs {
+            try? await deleteLog(id: log.id, goalId: goalId)
+        }
+        logsByGoal[goalId] = []
+        UserDefaults.standard.removeObject(forKey: localKey(for: goalId, uid: uid))
+        syncWidget()
+    }
 }

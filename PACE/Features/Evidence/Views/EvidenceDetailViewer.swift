@@ -200,7 +200,7 @@ struct EvidenceDetailViewer: View {
                 }
                 Button("CANCEL", role: .cancel) {}
             } message: {
-                Text("This will permanently delete this visual proof snapshot. Associated session log will remain.")
+                Text("This permanently deletes the photo and removes its reference from the associated session log.")
             }
         }
     }

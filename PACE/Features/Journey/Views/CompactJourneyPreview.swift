@@ -64,8 +64,7 @@ struct CompactJourneyPreview: View {
                     let right = max(left + 24, geometry.size.width - 12)
                     let lineWidth = right - left
                     let progressX = left + lineWidth * progressFraction
-                    let markerInset = min(CGFloat(22), lineWidth / 3)
-                    let markerX = min(max(progressX, left + markerInset), right - markerInset)
+                    let markerX = min(max(progressX, left), right)
 
                     ZStack {
                         Rectangle()

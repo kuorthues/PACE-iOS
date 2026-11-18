@@ -120,8 +120,8 @@ enum JourneyTimelineBuilder {
                 state = .target
             } else if isToday && log == nil {
                 state = .today
-            } else if let log = log {
-                let hasEvidence = (!sortedEvidence.isEmpty || log.evidenceId != nil)
+            } else if log != nil {
+                let hasEvidence = !sortedEvidence.isEmpty
                 state = hasEvidence ? .completedWithEvidence : .completed
             } else if isPast {
                 state = isScheduled ? .missed : .rest

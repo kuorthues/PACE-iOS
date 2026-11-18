@@ -15,6 +15,7 @@ import SwiftUI
 
 struct JourneyDetailView: View {
     let goal: PACEGoal
+    var showsScreenHeader: Bool = true
     
     @ObservedObject private var logService = DailyLogService.shared
     @ObservedObject private var evidenceService = EvidenceService.shared
@@ -24,7 +25,6 @@ struct JourneyDetailView: View {
     @State private var dateForLogSheet: Date? = nil
     @State private var evidenceForViewer: EvidenceItem? = nil
     @State private var showLegend: Bool = false
-    @State private var showFocusedTimeline = false
     
     private var goalLogs: [DailyLog] {
         logService.logsByGoal[goal.id] ?? []
@@ -42,6 +42,10 @@ struct JourneyDetailView: View {
         )
     }
     
+    private var visibleDays: [JourneyDay] {
+        days.filter { $0.state != .future || $0.isTarget }
+    }
+
     private var summary: JourneySummaryMetrics {
         JourneyTimelineBuilder.computeSummary(days: days)
     }
@@ -49,67 +53,53 @@ struct JourneyDetailView: View {
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                // Goal Header Banner
-                headerBanner
-                
-                PACEDivider()
-                
-                // Key Progress Metrics Row
-                metricsStrip
-                
-                PACEDivider()
-                
-                // Visual Node State Legend
-                legendSection
-                
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("ALL DAYS")
-                        .font(PACETypography.sectionHeader())
-                        .foregroundColor(PACEColor.textPrimary)
-                    JourneyOverviewList(
-                        days: days,
-                        selectedDay: $selectedDay,
-                        onViewEvidence: { evidence in evidenceForViewer = evidence }
-                    )
-                }
-                
-                DisclosureGroup(isExpanded: $showFocusedTimeline) {
-                    JourneyTimelineView(
-                        days: days,
-                        selectedDay: $selectedDay
-                    )
-                    .background(PACEColor.surfaceElevated)
-                    .overlay(Rectangle().stroke(PACEColor.border, lineWidth: 1))
-                } label: {
-                    Text("FOCUSED JOURNEY LINE")
-                        .font(PACETypography.sectionHeader())
-                        .foregroundColor(PACEColor.textPrimary)
-                }
-                // Selected Day Detail Panel
-                if let selected = selectedDay {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("SELECTED DAY ARCHIVE")
-                            .font(PACETypography.sectionHeader())
-                            .foregroundColor(PACEColor.textPrimary)
+                VStack(alignment: .leading, spacing: 20) {
+                    if showsScreenHeader {
+                        Text("JOURNEY")
+                            .font(PACETextStyle.displayLarge)
+                            .foregroundColor(PACETheme.primaryText)
+                    }
+
+                    headerBanner
+                    PACEDivider()
+                    metricsStrip
+                    PACEDivider()
+                    legendSection
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("HISTORY THROUGH TODAY")
+                            .font(PACETextStyle.pixelLabel)
+                            .foregroundColor(PACETheme.secondaryText)
+                            .tracking(1.5)
                         
-                        JourneyDayDetailCard(
-                            day: selected,
-                            goal: goal,
-                            onLogAction: { date in
-                                dateForLogSheet = date
-                            },
-                            onViewEvidence: { evidence in
-                                evidenceForViewer = evidence
-                            }
+                        JourneyOverviewList(
+                            days: visibleDays,
+                            selectedDay: $selectedDay,
+                            onViewEvidence: { evidence in evidenceForViewer = evidence }
                         )
                     }
-                    .id("selected-day-detail")
+
+                    if let selected = selectedDay {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("SELECTED DAY ARCHIVE")
+                                .font(PACETextStyle.pixelLabel)
+                                .foregroundColor(PACETheme.secondaryText)
+                                .tracking(1.5)
+
+                            JourneyDayDetailCard(
+                                day: selected,
+                                goal: goal,
+                                onLogAction: { dateForLogSheet = $0 },
+                                onViewEvidence: { evidenceForViewer = $0 }
+                            )
+                        }
+                        .id("selected-day-detail")
+                    }
+
+                    Spacer(minLength: 30)
                 }
-                
-                Spacer(minLength: 30)
-            }
-            .padding(20)
+                .padding(.horizontal, 20)
+                .padding(.bottom, 20)
             }
             .onChange(of: selectedDay?.id) { _, dayId in
                 guard dayId != nil else { return }
@@ -118,16 +108,13 @@ struct JourneyDetailView: View {
                 }
             }
         }
-        .background(PACEColor.background.ignoresSafeArea())
-        .navigationTitle("JOURNEY")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(PACEColor.background, for: .navigationBar)
-        .toolbarColorScheme(.dark, for: .navigationBar)
+        .background(PACETheme.background.ignoresSafeArea())
+        .toolbar(showsScreenHeader ? .visible : .hidden, for: .navigationBar)
         .task {
             _ = await logService.fetchLogs(for: goal.id)
             _ = await evidenceService.fetchEvidence(for: goal.id)
             if selectedDay == nil {
-                selectedDay = days.first(where: { $0.isToday }) ?? days.first
+                selectedDay = visibleDays.first(where: { $0.isToday }) ?? visibleDays.last
             }
         }
         .sheet(item: $dateForLogSheet) { date in
@@ -135,14 +122,13 @@ struct JourneyDetailView: View {
                 Task {
                     _ = await logService.fetchLogs(for: goal.id)
                     _ = await evidenceService.fetchEvidence(for: goal.id)
-                    // Refresh selected day
-                    if let sel = selectedDay {
+                    if let selected = selectedDay {
                         let updatedDays = JourneyTimelineBuilder.buildTimeline(
                             goal: goal,
                             logs: logService.logsByGoal[goal.id] ?? [],
                             evidenceItems: evidenceService.evidenceByGoal[goal.id] ?? []
                         )
-                        selectedDay = updatedDays.first(where: { $0.id == sel.id })
+                        selectedDay = updatedDays.first(where: { $0.id == selected.id })
                     }
                 }
             }

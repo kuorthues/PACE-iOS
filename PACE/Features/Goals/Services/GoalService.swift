@@ -242,22 +242,15 @@ final class GoalService: ObservableObject {
             throw error
         }
         
-        var secureGoal = goal
-        if secureGoal.userId != uid {
-            secureGoal = PACEGoal(
-                id: goal.id,
-                userId: uid,
-                title: trimmedTitle,
-                createdAt: goal.createdAt,
-                targetDate: goal.targetDate,
-                status: goal.status,
-                activityTypes: goal.activityTypes,
-                scheduledWeekdays: goal.scheduledWeekdays
-            )
-        } else {
-            secureGoal.title = trimmedTitle
+        guard goal.userId == uid else {
+            let error = AuthError.validation("You cannot update a goal owned by another user.")
+            self.errorMessage = error.localizedDescription
+            throw error
         }
         
+        var secureGoal = goal
+        secureGoal.title = trimmedTitle
+
 #if canImport(FirebaseFirestore) && canImport(FirebaseAuth)
         if AuthService.shared.isFirebaseConfigured, let authUid = Auth.auth().currentUser?.uid, authUid == uid {
             do {
@@ -290,6 +283,9 @@ final class GoalService: ObservableObject {
             throw error
         }
         
+        // Remove user-scoped child data before deleting the parent goal.
+        await DailyLogService.shared.deleteAllLogs(for: id)
+        await EvidenceService.shared.deleteAllEvidence(for: id)
 #if canImport(FirebaseFirestore) && canImport(FirebaseAuth)
         if AuthService.shared.isFirebaseConfigured, let authUid = Auth.auth().currentUser?.uid, authUid == uid {
             do {

@@ -3,64 +3,103 @@
 //  PACE
 //
 //  Data-backed insights for logged sessions and activity tags.
-//
 
 import SwiftUI
+
+private enum InsightsReportingPeriod: Int, CaseIterable, Identifiable {
+    case sevenDays = 7
+    case thirtyDays = 30
+
+    var id: Int { rawValue }
+
+    var label: String {
+        switch self {
+        case .sevenDays: return "LAST 7 DAYS"
+        case .thirtyDays: return "LAST 30 DAYS"
+        }
+    }
+}
 
 struct InsightsPlaceholderView: View {
     @ObservedObject private var goalService = GoalService.shared
     @ObservedObject private var logService = DailyLogService.shared
     
-    // Aggregated data across all active goals
-    private var allLogs: [DailyLog] {
-        logService.logsByGoal.values.flatMap { $0 }
-    }
-    
-    private var totalMinutes: Int {
-        allLogs.reduce(0) { $0 + $1.durationMinutes }
+    @State private var selectedGoalId: String? = nil
+    @State private var reportingPeriod: InsightsReportingPeriod = .sevenDays
+
+    private var selectedGoalTitle: String {
+        guard let selectedGoalId else { return "ALL GOALS" }
+        return goalService.goals.first(where: { $0.id == selectedGoalId })?.title.uppercased() ?? "ALL GOALS"
     }
 
-    private var avgSessionMinutes: Int {
-        guard !allLogs.isEmpty else { return 0 }
-        return totalMinutes / allLogs.count
-    }
-
-    private var longestStreak: Int {
-        goalService.goals.compactMap { goal in
-            let logs = logService.logsByGoal[goal.id] ?? []
-            return GoalAnalytics.compute(goal: goal, logs: logs).longestStreak
-        }.max() ?? 0
-    }
-
-    private var consistencyPercentage: Double? {
-        guard !allLogs.isEmpty, !goalService.goals.isEmpty else { return nil }
-        let percentages = goalService.goals.map { goal in
-            let logs = logService.logsByGoal[goal.id] ?? []
-            return GoalAnalytics.compute(goal: goal, logs: logs).consistencyPercentage
+    private var scopedLogs: [DailyLog] {
+        if let selectedGoalId {
+            return logService.logsByGoal[selectedGoalId] ?? []
         }
-        return percentages.reduce(0.0, +) / Double(percentages.count)
+        return logService.logsByGoal.values.flatMap { $0 }
     }
 
-    private var recentDays: [Date] {
+    private var periodDates: [Date] {
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: Date())
-        return (0..<7).reversed().compactMap { offset in
-            calendar.date(byAdding: .day, value: -offset, to: today)
+        return (0..<reportingPeriod.rawValue).reversed().compactMap {
+            calendar.date(byAdding: .day, value: -$0, to: today)
         }
     }
 
     private var dailyMinutes: [Int] {
         let calendar = Calendar.current
-        let minutesByDay = allLogs.reduce(into: [Date: Int]()) { result, log in
-            let day = calendar.startOfDay(for: log.date)
-            result[day, default: 0] += log.durationMinutes
+        let minutesByDay = scopedLogs.reduce(into: [Date: Int]()) { result, log in
+            result[calendar.startOfDay(for: log.date), default: 0] += log.durationMinutes
         }
-        return recentDays.map { minutesByDay[$0] ?? 0 }
+        return periodDates.map { minutesByDay[$0] ?? 0 }
+    }
+    
+    private var totalMinutes: Int {
+        scopedLogs.reduce(0) { $0 + $1.durationMinutes }
+    }
+
+    private var averageSessionMinutes: Int {
+        guard !scopedLogs.isEmpty else { return 0 }
+        return totalMinutes / scopedLogs.count
+    }
+
+    private var longestStreak: Int {
+        let goals = selectedGoalId.flatMap { id in
+            goalService.goals.first(where: { $0.id == id }).map { [$0] }
+        } ?? goalService.goals
+        return goals.map {
+            GoalAnalytics.compute(goal: $0, logs: logService.logsByGoal[$0.id] ?? []).longestStreak
+        }.max() ?? 0
+    }
+
+    private var consistencyPercentage: Double? {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let goals = selectedGoalId.flatMap { id in
+            goalService.goals.first(where: { $0.id == id }).map { [$0] }
+        } ?? goalService.goals
+
+        var scheduledDays = 0
+        var completedDays = 0
+        for goal in goals {
+            let logs = Set((logService.logsByGoal[goal.id] ?? []).map(\.dateString))
+            for date in periodDates where date <= today {
+                guard goal.scheduledWeekdays.contains(calendar.component(.weekday, from: date)) else { continue }
+                scheduledDays += 1
+                if logs.contains(DailyLog.dateFormatter.string(from: date)) {
+                    completedDays += 1
+                }
+            }
+        }
+
+        guard scheduledDays > 0 else { return nil }
+        return (Double(completedDays) / Double(scheduledDays) * 100).rounded()
     }
 
     private var activityDistribution: [(name: String, count: Int)] {
         var counts: [String: Int] = [:]
-        for activity in allLogs.flatMap(\.selectedActivities) {
+        for activity in scopedLogs.flatMap(\.selectedActivities) {
             let name = activity.trimmingCharacters(in: .whitespacesAndNewlines)
             if !name.isEmpty {
                 counts[name, default: 0] += 1
@@ -76,62 +115,97 @@ struct InsightsPlaceholderView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 28) {
-                    // Screen Title
+                VStack(alignment: .leading, spacing: 24) {
                     Text("INSIGHTS")
                         .font(PACETextStyle.displayLarge)
                         .foregroundColor(PACETheme.primaryText)
                         .padding(.top, 16)
                     
-                    // 2-Column Editorial Metrics Grid (NO CARDS)
+                    filterSection
                     editorialMetricsGrid
-                    
-                    // Thin Divider
-                    Rectangle()
-                        .fill(PACETheme.border)
-                        .frame(height: 1)
-                    
-                    // Weekly Effort Section
-                    weeklyEffortSection
-                    
-                    // Thin Divider
-                    Rectangle()
-                        .fill(PACETheme.border)
-                        .frame(height: 1)
-                    
-                    // Activity Distribution Section
+                    Rectangle().fill(PACETheme.border).frame(height: 1)
+                    dailyEffortSection
+                    Rectangle().fill(PACETheme.border).frame(height: 1)
                     activityDistributionSection
-                    
-                    // Thin Divider
-                    Rectangle()
-                        .fill(PACETheme.border)
-                        .frame(height: 1)
-                    
-                    // Statistical Insight Section
+                    Rectangle().fill(PACETheme.border).frame(height: 1)
                     insightSummarySection
-                    
                     Spacer(minLength: 40)
                 }
-                .padding(.horizontal, 24)
+                .padding(.horizontal, 20)
             }
             .background(PACETheme.background.ignoresSafeArea())
-            .navigationBarHidden(true)
+            .toolbar(.hidden, for: .navigationBar)
             .task {
                 await goalService.fetchActiveGoals()
-                for g in goalService.goals {
-                    _ = await logService.fetchLogs(for: g.id)
+                for goal in goalService.goals {
+                    _ = await logService.fetchLogs(for: goal.id)
+                }
+                if let selectedGoalId,
+                   !goalService.goals.contains(where: { $0.id == selectedGoalId }) {
+                    self.selectedGoalId = nil
                 }
             }
         }
     }
     
-    // MARK: - 2-Column Editorial Metrics Grid
+    private var filterSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("REPORTING FILTERS")
+                .font(PACETextStyle.pixelLabel)
+                .foregroundColor(PACETheme.secondaryText)
+                .tracking(1.5)
+
+            HStack(spacing: 8) {
+                Menu {
+                    Button("ALL GOALS") {
+                        selectedGoalId = nil
+                    }
+                    ForEach(goalService.goals) { goal in
+                        Button(goal.title.uppercased()) {
+                            selectedGoalId = goal.id
+                        }
+                    }
+                } label: {
+                    filterButton(title: selectedGoalTitle, icon: "target")
+                }
+
+                Menu {
+                    ForEach(InsightsReportingPeriod.allCases) { period in
+                        Button(period.label) {
+                            reportingPeriod = period
+                        }
+                    }
+                } label: {
+                    filterButton(title: reportingPeriod.label, icon: "calendar")
+                }
+            }
+        }
+    }
+
+    private func filterButton(title: String, icon: String) -> some View {
+        HStack(spacing: 7) {
+            Image(systemName: icon)
+                .font(.system(size: 12, weight: .semibold))
+            Text(title)
+                .font(PACETextStyle.pixelMetadata)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            Image(systemName: "chevron.down")
+                .font(.system(size: 9, weight: .bold))
+        }
+        .foregroundColor(PACETheme.primaryText)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 11)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(PACETheme.surface)
+        .overlay(Rectangle().stroke(PACETheme.border, lineWidth: 1))
+    }
     
     private var editorialMetricsGrid: some View {
-        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], alignment: .leading, spacing: 24) {
-            metric(label: "TOTAL TIME", value: "\(totalMinutes / 60)H \(totalMinutes % 60)M")
-            metric(label: "AVG SESSION", value: allLogs.isEmpty ? "—" : "\(avgSessionMinutes)M")
-            metric(label: "LONGEST STREAK", value: "\(longestStreak) DAYS")
+        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], alignment: .leading, spacing: 22) {
+            metric(label: "TOTAL TIME", value: totalMinutes == 0 ? "—" : formatDuration(totalMinutes))
+            metric(label: "AVG SESSION", value: scopedLogs.isEmpty ? "—" : formatDuration(averageSessionMinutes))
+            metric(label: "SESSIONS", value: "\(scopedLogs.count)")
             metric(label: "CONSISTENCY", value: consistencyPercentage.map { String(format: "%.0f%%", $0) } ?? "—")
         }
     }
@@ -153,84 +227,64 @@ struct InsightsPlaceholderView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
     
-    // MARK: - Weekly Effort Line Chart (SwiftUI Path, #A7FF19, No Gradient)
-    
-    private var weeklyEffortSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("WEEKLY EFFORT")
-                .font(PACETextStyle.pixelLabel)
-                .foregroundColor(PACETheme.secondaryText)
-                .tracking(1.5)
+    private var dailyEffortSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("DAILY EFFORT")
+                    .font(PACETextStyle.pixelLabel)
+                    .foregroundColor(PACETheme.secondaryText)
+                    .tracking(1.5)
+                Spacer()
+                Text("\(reportingPeriod.rawValue) DAYS")
+                    .font(PACETextStyle.pixelMetadata)
+                    .foregroundColor(PACETheme.accent)
+            }
 
             if dailyMinutes.allSatisfy({ $0 == 0 }) {
-                Text("No logged time in the last seven days.")
-                    .font(.body)
+                Text("No logged time in this reporting period.")
+                    .font(PACETextStyle.body)
                     .foregroundColor(PACETheme.secondaryText)
-                    .frame(maxWidth: .infinity, minHeight: 100, alignment: .leading)
+                    .frame(maxWidth: .infinity, minHeight: 120, alignment: .leading)
             } else {
-                VStack(spacing: 10) {
-                    GeometryReader { geo in
-                        let values = dailyMinutes
-                        let maxValue = CGFloat(max(values.max() ?? 0, 1))
-                        let width = geo.size.width
-                        let height = geo.size.height
-                        let stepX = width / CGFloat(max(1, values.count - 1))
-
-                        ZStack {
-                            Path { path in
-                                path.move(to: CGPoint(x: 0, y: height - 1))
-                                path.addLine(to: CGPoint(x: width, y: height - 1))
-                            }
-                            .stroke(PACETheme.border, lineWidth: 1)
-
-                            Path { path in
-                                for (index, value) in values.enumerated() {
-                                    let x = CGFloat(index) * stepX
-                                    let y = height - (CGFloat(value) / maxValue * (height - 12)) - 6
-                                    if index == 0 {
-                                        path.move(to: CGPoint(x: x, y: y))
-                                    } else {
-                                        path.addLine(to: CGPoint(x: x, y: y))
+                let maxMinutes = max(dailyMinutes.max() ?? 0, 1)
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(alignment: .bottom, spacing: 4) {
+                        ForEach(periodDates.indices, id: \.self) { index in
+                            let minutes = dailyMinutes[index]
+                            VStack(spacing: 5) {
+                                Text(minutes == 0 ? "—" : formatDuration(minutes))
+                                    .font(PACETextStyle.pixelMetadata)
+                                    .foregroundColor(minutes == 0 ? PACETheme.mutedText : PACETheme.secondaryText)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.65)
+                                GeometryReader { proxy in
+                                    VStack {
+                                        Spacer()
+                                        Rectangle()
+                                            .fill(minutes == 0 ? PACETheme.border : PACETheme.accent)
+                                            .frame(height: max(2, proxy.size.height * CGFloat(minutes) / CGFloat(maxMinutes)))
                                     }
                                 }
+                                .frame(height: 82)
+                                Text(periodDates[index].formatted(.dateTime.weekday(.narrow)))
+                                    .font(PACETextStyle.pixelMetadata)
+                                    .foregroundColor(Calendar.current.isDateInToday(periodDates[index]) ? PACETheme.accent : PACETheme.mutedText)
                             }
-                            .stroke(PACETheme.accent, lineWidth: 2)
-
-                            ForEach(values.indices, id: \.self) { index in
-                                let x = CGFloat(index) * stepX
-                                let y = height - (CGFloat(values[index]) / maxValue * (height - 12)) - 6
-                                Rectangle()
-                                    .fill(PACETheme.accent)
-                                    .frame(width: 7, height: 7)
-                                    .position(x: x, y: y)
-                                    .accessibilityHidden(true)
-                            }
-                        }
-                    }
-                    .frame(height: 112)
-                    .accessibilityHidden(true)
-
-                    HStack(alignment: .top, spacing: 0) {
-                        ForEach(recentDays.indices, id: \.self) { index in
-                            let date = recentDays[index]
-                            VStack(spacing: 3) {
-                                Text(date.formatted(.dateTime.weekday(.abbreviated)))
-                                Text(date.formatted(.dateTime.day()))
-                            }
-                            .font(PACETextStyle.pixelMetadata)
-                            .foregroundColor(PACETheme.secondaryText)
                             .frame(maxWidth: .infinity)
                             .accessibilityElement(children: .ignore)
-                            .accessibilityLabel("\(date.formatted(date: .complete, time: .omitted)), \(dailyMinutes[index]) minutes")
+                            .accessibilityLabel("\(periodDates[index].formatted(date: .complete, time: .omitted)), \(minutes) minutes")
                         }
                     }
+                    Rectangle().fill(PACETheme.border).frame(height: 1)
+                    Text("Bars show logged session time. Labels use minutes below one hour and hours above one hour.")
+                        .font(PACETextStyle.pixelMetadata)
+                        .foregroundColor(PACETheme.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 .accessibilityElement(children: .contain)
             }
         }
     }
-    
-    // MARK: - Activity Distribution (Horizontal Progress Lines)
     
     private var activityDistributionSection: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -238,19 +292,17 @@ struct InsightsPlaceholderView: View {
                 .font(PACETextStyle.pixelLabel)
                 .foregroundColor(PACETheme.secondaryText)
                 .tracking(1.5)
-
-            Text("Share of logged activity tags, not duration per activity.")
+            Text("Share of activity tags across \(scopedLogs.count) logged \(scopedLogs.count == 1 ? "session" : "sessions"); this is not time by activity.")
                 .font(.subheadline)
                 .foregroundColor(PACETheme.secondaryText)
 
             if activityDistribution.isEmpty {
-                Text("No activity tags logged yet.")
-                    .font(.body)
+                Text("No activity tags logged in this selection.")
+                    .font(PACETextStyle.body)
                     .foregroundColor(PACETheme.secondaryText)
-                    .padding(.top, 4)
             } else {
                 let totalTags = activityDistribution.reduce(0) { $0 + $1.count }
-                VStack(spacing: 16) {
+                VStack(spacing: 14) {
                     ForEach(activityDistribution, id: \.name) { item in
                         let share = Double(item.count) / Double(totalTags)
                         VStack(alignment: .leading, spacing: 7) {
@@ -258,49 +310,53 @@ struct InsightsPlaceholderView: View {
                                 Text(item.name)
                                     .font(.system(.body, design: .monospaced).weight(.semibold))
                                     .foregroundColor(PACETheme.primaryText)
-                                    .fixedSize(horizontal: false, vertical: true)
                                 Spacer(minLength: 8)
-                                Text("\(Int((share * 100).rounded()))% · \(item.count) \(item.count == 1 ? "tag" : "tags")")
+                                Text("\(Int((share * 100).rounded()))% · \(item.count)")
                                     .font(PACETextStyle.pixelMetadata)
                                     .foregroundColor(PACETheme.accent)
-                                    .lineLimit(1)
-                                    .minimumScaleFactor(0.8)
                             }
                             GeometryReader { proxy in
                                 ZStack(alignment: .leading) {
                                     Rectangle().fill(PACETheme.surface)
-                                    Rectangle()
-                                        .fill(PACETheme.accent)
-                                        .frame(width: proxy.size.width * share)
+                                    Rectangle().fill(PACETheme.accent).frame(width: proxy.size.width * share)
                                 }
                             }
                             .frame(height: 6)
-                            .accessibilityHidden(true)
                         }
                         .accessibilityElement(children: .combine)
-                        .accessibilityLabel("\(item.name), \(item.count) of \(totalTags) logged activity tags, \(Int((share * 100).rounded())) percent")
+                        .accessibilityLabel("\(item.name), \(item.count) of \(totalTags) activity tags, \(Int((share * 100).rounded())) percent")
                     }
                 }
-                .padding(.top, 4)
             }
         }
     }
     
-    // MARK: - Statistical Insight Section
-    
     private var insightSummarySection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("INSIGHT")
+            Text("HOW CONSISTENCY WORKS")
                 .font(PACETextStyle.pixelLabel)
                 .foregroundColor(PACETheme.secondaryText)
                 .tracking(1.5)
 
-            Text(allLogs.isEmpty
-                 ? "Log a session to see your activity insights."
-                 : "You've logged \(totalMinutes) minutes across \(allLogs.count) \(allLogs.count == 1 ? "session" : "sessions").")
-                .font(.body)
+            Text("Consistency counts logged sessions on scheduled days in the selected period. Planned rest days do not lower the percentage; unscheduled sessions are still included in session and time totals.")
+                .font(PACETextStyle.body)
                 .foregroundColor(PACETheme.primaryText)
                 .lineSpacing(4)
+
+            Text(scopedLogs.isEmpty
+                 ? "Log a session to see factual progress summaries."
+                 : "\(scopedLogs.count) \(scopedLogs.count == 1 ? "session" : "sessions") logged · \(formatDuration(totalMinutes)) total · longest streak \(longestStreak) \(longestStreak == 1 ? "day" : "days").")
+                .font(PACETextStyle.pixelMetadata)
+                .foregroundColor(PACETheme.accent)
         }
+    }
+
+    private func formatDuration(_ minutes: Int) -> String {
+        if minutes >= 60 {
+            let hours = minutes / 60
+            let remainder = minutes % 60
+            return remainder == 0 ? "\(hours)H" : "\(hours)H \(remainder)M"
+        }
+        return "\(minutes)M"
     }
 }

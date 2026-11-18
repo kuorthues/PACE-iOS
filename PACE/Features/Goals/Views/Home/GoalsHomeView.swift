@@ -103,29 +103,68 @@ struct GoalsHomeView: View {
     // MARK: - Header
     
     private var headerSection: some View {
-        HStack(alignment: .center) {
-            Text("GOALS")
-                .font(PACETextStyle.displayLarge)
-                .foregroundColor(PACETheme.primaryText)
+        HStack(alignment: .center, spacing: 12) {
+            PACEBrandMark(logoSize: 30)
             
-            Spacer()
+            Spacer(minLength: 8)
             
             Button(action: {
                 showCreateGoalSheet = true
             }) {
-                Text("+ NEW GOAL")
-                    .font(.system(size: 11, weight: .bold, design: .monospaced))
-                    .foregroundColor(PACETheme.accent)
-                    .tracking(1.5)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(PACETheme.surface)
-                    .overlay(
-                        Rectangle().stroke(PACETheme.accent, lineWidth: 1)
-                    )
+                HStack(spacing: 6) {
+                    Image(systemName: "plus")
+                        .font(.system(size: 11, weight: .black))
+                    Text("NEW GOAL")
+                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                        .tracking(1.5)
+                }
+                .foregroundColor(PACETheme.accent)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(PACETheme.surface)
+                .overlay(Rectangle().stroke(PACETheme.accent, lineWidth: 1))
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Create new goal")
         }
+    }
+
+    private func weeklyActivitySnapshot(for goal: PACEGoal, logs: [DailyLog]) -> some View {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let dates = (0..<7).reversed().compactMap {
+            calendar.date(byAdding: .day, value: -$0, to: today)
+        }
+        let loggedDates = Set(logs.map(\.dateString))
+
+        return VStack(alignment: .leading, spacing: 6) {
+            Text("THIS WEEK")
+                .font(PACETextStyle.pixelMetadata)
+                .foregroundColor(PACETheme.secondaryText)
+                .tracking(1.0)
+
+            HStack(alignment: .bottom, spacing: 4) {
+                ForEach(dates, id: \.self) { date in
+                    let dateString = DailyLog.dateFormatter.string(from: date)
+                    let isLogged = loggedDates.contains(dateString)
+                    let isScheduled = goal.scheduledWeekdays.contains(calendar.component(.weekday, from: date))
+                    VStack(spacing: 3) {
+                        Rectangle()
+                            .fill(isLogged ? PACETheme.accent : (isScheduled ? PACETheme.border : PACETheme.surfaceElevated))
+                            .frame(width: 7, height: isLogged ? 24 : (isScheduled ? 14 : 7))
+                        Text(date.formatted(.dateTime.weekday(.narrow)))
+                            .font(PACETextStyle.pixelMetadata)
+                            .foregroundColor(calendar.isDateInToday(date) ? PACETheme.accent : PACETheme.mutedText)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("\(date.formatted(date: .complete, time: .omitted)), \(isLogged ? "logged" : (isScheduled ? "scheduled and pending" : "rest day"))")
+                }
+            }
+            .frame(width: 104, height: 42, alignment: .bottom)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Seven day activity snapshot")
     }
     
     // MARK: - Primary Goal Section
@@ -134,8 +173,9 @@ struct GoalsHomeView: View {
         let logs = logService.logsByGoal[goal.id] ?? []
         let metrics = GoalAnalytics.compute(goal: goal, logs: logs)
         let hasLoggedToday = logs.contains(where: { $0.dateString == DailyLog.dateFormatter.string(from: Date()) })
+        let isScheduledToday = goal.isScheduledForToday
         let deadline = deadlinePresentation(for: goal)
-        let todayStatus = hasLoggedToday ? "TODAY LOGGED" : (goal.isScheduledForToday ? "TODAY NOT LOGGED" : "TODAY · PLANNED REST")
+        let todayStatus = hasLoggedToday ? "TODAY LOGGED" : (isScheduledToday ? "TODAY PENDING" : "TODAY · REST DAY")
         let evidenceList = evidenceService.evidenceByGoal[goal.id] ?? []
         let days = JourneyTimelineBuilder.buildTimeline(goal: goal, logs: logs, evidenceItems: evidenceList)
         
@@ -157,43 +197,48 @@ struct GoalsHomeView: View {
             }
             .buttonStyle(.plain)
             
-            // Deadline state: show the real target date before and after it passes.
-            VStack(alignment: .leading, spacing: 4) {
-                Text(deadline.value)
-                    .font(.system(size: countdownFontSize, weight: .black, design: .monospaced))
-                    .foregroundColor(PACETheme.accent)
-                    .tracking(1.0)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-                    .accessibilityLabel(deadline.spokenValue)
+            // Deadline state and real seven-day activity snapshot.
+            HStack(alignment: .top, spacing: 16) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(deadline.value)
+                        .font(.system(size: countdownFontSize, weight: .black, design: .monospaced))
+                        .foregroundColor(PACETheme.accent)
+                        .tracking(1.0)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                        .accessibilityLabel(deadline.spokenValue)
+
+                    Text(deadline.label)
+                        .font(PACETextStyle.pixelLabel)
+                        .foregroundColor(PACETheme.secondaryText)
+                        .tracking(1.5)
+
+                    Text("TARGET: \(goal.formattedTargetDate.uppercased())")
+                        .font(PACETextStyle.pixelMetadata)
+                        .foregroundColor(PACETheme.secondaryText)
+                        .tracking(0.5)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
                 
-                Text(deadline.label)
-                    .font(PACETextStyle.pixelLabel)
-                    .foregroundColor(PACETheme.secondaryText)
-                    .tracking(1.5)
-                
-                Text("TARGET: \(goal.formattedTargetDate.uppercased())")
-                    .font(PACETextStyle.pixelMetadata)
-                    .foregroundColor(PACETheme.secondaryText)
-                    .tracking(0.5)
+                weeklyActivitySnapshot(for: goal, logs: logs)
             }
             
-            // Today Status
+            // Contextual status and action for today.
             HStack(spacing: 8) {
                 Rectangle()
-                    .fill(hasLoggedToday ? PACETheme.accent : PACETheme.border)
+                    .fill(hasLoggedToday ? PACETheme.accent : (isScheduledToday ? PACETheme.border : PACETheme.mutedText))
                     .frame(width: 8, height: 8)
                 
                 Text(todayStatus)
                     .font(PACETextStyle.pixelMetadata)
-                    .foregroundColor(hasLoggedToday ? PACETheme.accent : PACETheme.secondaryText)
+                    .foregroundColor(hasLoggedToday ? PACETheme.accent : (isScheduledToday ? PACETheme.secondaryText : PACETheme.mutedText))
                     .tracking(1.0)
             }
+            .accessibilityElement(children: .combine)
             
-            // Primary CTA
             PACEButton(
-                title: hasLoggedToday ? "EDIT TODAY'S LOG →" : "LOG TODAY'S PROGRESS →",
-                variant: .primary
+                title: hasLoggedToday ? "EDIT TODAY'S LOG →" : (isScheduledToday ? "LOG TODAY'S PROGRESS →" : "LOG OPTIONAL SESSION →"),
+                variant: hasLoggedToday ? .secondary : .primary
             ) {
                 selectedGoalForLog = goal
             }
