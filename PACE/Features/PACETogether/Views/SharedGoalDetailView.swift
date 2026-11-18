@@ -11,9 +11,13 @@ struct SharedGoalDetailView: View {
     @State private var showManageConfirmation = false
     @State private var actionError: String?
     @State private var isManaging = false
+    @State private var isSendingReminder = false
+    @State private var reminderAvailableAt: Date?
+    @State private var reminderStatus: String?
 
-    init(goal: SharedGoal) {
+    init(goal: SharedGoal, openLoggingOnAppear: Bool = false) {
         _goal = State(initialValue: goal)
+        _showLogSheet = State(initialValue: openLoggingOnAppear)
     }
 
     private var currentUserId: String? {
@@ -73,6 +77,7 @@ struct SharedGoalDetailView: View {
 
                 teamProgressSection
                 memberProgressSection
+                partnerReminderSection
                 journeyLink
                 if goal.status == .active {
                     progressLoggingSection
@@ -122,6 +127,9 @@ struct SharedGoalDetailView: View {
                     profilesById[memberId] = profile
                 }
             }
+        }
+        .task(id: "\(goal.id)-\(partnerUserId ?? "none")") {
+            await refreshReminderCooldown()
         }
         .sheet(isPresented: $showLogSheet) {
             LogProgressView(
@@ -210,6 +218,122 @@ struct SharedGoalDetailView: View {
                 .padding(12)
                 .background(PACETheme.surface)
                 .overlay(Rectangle().stroke(PACETheme.border, lineWidth: 1))
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var partnerReminderSection: some View {
+        if goal.status == .active, let partnerUserId {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("PARTNER TODAY")
+                    .font(PACETextStyle.pixelLabel)
+                    .foregroundColor(PACETheme.secondaryText)
+                    .tracking(1.5)
+
+                if !isWithinGoalDates {
+                    reminderStatusLine("TODAY IS OUTSIDE THE GOAL DATES", color: PACETheme.mutedText)
+                } else if !isScheduledToday {
+                    reminderStatusLine("REST DAY · NO REMINDER NEEDED", color: PACETheme.secondaryText)
+                } else if partnerHasLoggedToday {
+                    reminderStatusLine("PARTNER LOGGED TODAY", color: PACETheme.accent)
+                } else if let reminderAvailableAt, reminderAvailableAt > Date() {
+                    reminderStatusLine(
+                        "REMINDER AVAILABLE \(reminderAvailableAt.formatted(.relative(presentation: .numeric)).uppercased())",
+                        color: PACETheme.secondaryText
+                    )
+                } else {
+                    Button(action: sendPartnerReminder) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "bell.badge")
+                            Text(isSendingReminder ? "SENDING REMINDER…" : "REMIND PARTNER")
+                            Spacer()
+                        }
+                        .font(PACETextStyle.pixelMetadata)
+                        .foregroundColor(PACETheme.textOnAccent)
+                        .padding(12)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                        .background(PACETheme.accent)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isSendingReminder)
+                    .accessibilityHint("Sends one in-app reminder to your partner. It does not send a phone notification.")
+                }
+
+                if let reminderStatus {
+                    reminderStatusLine(
+                        reminderStatus.uppercased(),
+                        color: reminderStatus.hasPrefix("REMINDER SENT") ? PACETheme.accent : PACETheme.secondaryText
+                    )
+                }
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(PACETheme.surface)
+            .overlay(Rectangle().stroke(PACETheme.border, lineWidth: 1))
+        }
+    }
+
+    private var partnerUserId: String? {
+        guard let currentUserId else { return nil }
+        return goal.memberIds.first { $0 != currentUserId }
+    }
+
+    private var todayString: String {
+        DailyLog.dateFormatter.string(from: Calendar.current.startOfDay(for: Date()))
+    }
+
+    private var isWithinGoalDates: Bool {
+        let today = Calendar.current.startOfDay(for: Date())
+        return today >= Calendar.current.startOfDay(for: goal.startDate)
+            && today <= Calendar.current.startOfDay(for: goal.targetDateForDisplay)
+    }
+
+    private var isScheduledToday: Bool {
+        goal.scheduledWeekdays.contains(Calendar.current.component(.weekday, from: Date()))
+    }
+
+    private var partnerHasLoggedToday: Bool {
+        guard let partnerUserId else { return false }
+        return goalLogs.contains { $0.authorId == partnerUserId && $0.dateString == todayString }
+    }
+
+    private func reminderStatusLine(_ text: String, color: Color) -> some View {
+        Text(text)
+            .font(PACETextStyle.pixelMetadata)
+            .foregroundColor(color)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func refreshReminderCooldown() async {
+        guard goal.status == .active,
+              isWithinGoalDates,
+              isScheduledToday,
+              !partnerHasLoggedToday,
+              let partnerUserId else { return }
+        do {
+            reminderAvailableAt = try await PartnerReminderService.shared.cooldownUntil(
+                goalId: goal.id,
+                recipientId: partnerUserId
+            )
+        } catch {
+            // The send transaction remains authoritative if this advisory read is offline.
+        }
+    }
+
+    private func sendPartnerReminder() {
+        guard !isSendingReminder else { return }
+        isSendingReminder = true
+        reminderStatus = nil
+        Task {
+            defer { isSendingReminder = false }
+            do {
+                try await PartnerReminderService.shared.sendReminder(for: goal)
+                reminderAvailableAt = Date().addingTimeInterval(PartnerReminderService.cooldownInterval)
+                reminderStatus = "REMINDER SENT · YOUR PARTNER WILL SEE IT IN PACE"
+            } catch {
+                reminderStatus = error.localizedDescription
+                await refreshReminderCooldown()
             }
         }
     }

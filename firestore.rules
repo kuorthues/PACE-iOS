@@ -78,6 +78,12 @@ service cloud.firestore {
       allow read, write: if isOwner(uid);
     }
 
+    // Read markers are account-private; notification events themselves remain derived
+    // from invitations, authorized shared logs, and member-only reminder records.
+    match /users/{uid}/notificationState/{eventId} {
+      allow get, list, create, update, delete: if isOwner(uid);
+    }
+
     match /users/{uid}/{document=**} {
       allow read, write: if isOwner(uid);
     }
@@ -261,6 +267,45 @@ service cloud.firestore {
       return signedIn()
         && exists(goalPath(goalId))
         && request.auth.uid in get(goalPath(goalId)).data.memberIds;
+    }
+
+    function isActiveSharedGoal(goalId) {
+      return isMember(goalId)
+        && get(goalPath(goalId)).data.status == 'active'
+        && get(goalPath(goalId)).data.memberIds.size() == 2;
+    }
+
+    function reminderPath(goalId, reminderId) {
+      return /databases/$(database)/documents/sharedGoals/$(goalId)/reminders/$(reminderId);
+    }
+
+    function reminderCooldownPath(goalId, recipientId) {
+      return /databases/$(database)/documents/sharedGoals/$(goalId)/reminderCooldowns/$(recipientId);
+    }
+
+    function matchesReminderAfter(goalId, reminderId, recipientId, senderId) {
+      let reminder = getAfter(reminderPath(goalId, reminderId)).data;
+      return reminder.id == reminderId
+        && reminder.sharedGoalId == goalId
+        && reminder.senderId == senderId
+        && reminder.recipientId == recipientId
+        && reminder.createdAt == request.time;
+    }
+
+    function validReminderCooldown(data, goalId, recipientId) {
+      return data.keys().hasAll([
+          'recipientId', 'lastSenderId', 'lastReminderId', 'lastReminderAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'recipientId', 'lastSenderId', 'lastReminderId', 'lastReminderAt', 'updatedAt'
+        ])
+        && data.recipientId == recipientId
+        && data.lastSenderId == request.auth.uid
+        && data.lastReminderId is string
+        && data.lastReminderAt == request.time
+        && data.updatedAt == request.time
+        && existsAfter(reminderPath(goalId, data.lastReminderId))
+        && matchesReminderAfter(goalId, data.lastReminderId, recipientId, request.auth.uid);
     }
 
     function matchingPendingInvitation(invitationId, goalId, senderId, recipientId) {
@@ -474,6 +519,53 @@ service cloud.firestore {
         allow delete: if isMember(goalId)
           && get(goalPath(goalId)).data.status in ['inviting', 'active']
           && resource.data.authorId == request.auth.uid;
+      }
+
+      // Reminder events are authoritative, member-readable records. The paired cooldown
+      // document is updated in the same transaction and is checked against server time.
+      match /reminders/{reminderId} {
+        allow get, list: if isMember(goalId);
+        allow create: if isActiveSharedGoal(goalId)
+          && request.resource.data.keys().hasAll([
+            'id', 'sharedGoalId', 'senderId', 'recipientId', 'createdAt'
+          ])
+          && request.resource.data.keys().hasOnly([
+            'id', 'sharedGoalId', 'senderId', 'recipientId', 'createdAt'
+          ])
+          && request.resource.data.id == reminderId
+          && request.resource.data.sharedGoalId == goalId
+          && request.resource.data.senderId == request.auth.uid
+          && request.resource.data.recipientId is string
+          && request.resource.data.recipientId in get(goalPath(goalId)).data.memberIds
+          && request.resource.data.recipientId != request.auth.uid
+          && request.resource.data.createdAt == request.time
+          && existsAfter(reminderCooldownPath(goalId, request.resource.data.recipientId))
+          && getAfter(reminderCooldownPath(goalId, request.resource.data.recipientId)).data.lastReminderId == reminderId
+          && getAfter(reminderCooldownPath(goalId, request.resource.data.recipientId)).data.lastSenderId == request.auth.uid
+          && getAfter(reminderCooldownPath(goalId, request.resource.data.recipientId)).data.lastReminderAt == request.time;
+        allow update, delete: if false;
+      }
+
+      // One recipient-specific cooldown per goal prevents both partners from bypassing
+      // the 24-hour limit by creating additional reminder documents.
+      match /reminderCooldowns/{recipientId} {
+        allow get: if isMember(goalId);
+        allow list: if false;
+        allow create: if isActiveSharedGoal(goalId)
+          && recipientId in get(goalPath(goalId)).data.memberIds
+          && recipientId != request.auth.uid
+          && validReminderCooldown(request.resource.data, goalId, recipientId);
+        allow update: if isActiveSharedGoal(goalId)
+          && recipientId in get(goalPath(goalId)).data.memberIds
+          && recipientId != request.auth.uid
+          && resource.data.recipientId == recipientId
+          && resource.data.lastReminderAt is timestamp
+          && request.time >= resource.data.lastReminderAt + duration.value(24, 'h')
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'lastSenderId', 'lastReminderId', 'lastReminderAt', 'updatedAt'
+          ])
+          && validReminderCooldown(request.resource.data, goalId, recipientId);
+        allow delete: if false;
       }
     }
 

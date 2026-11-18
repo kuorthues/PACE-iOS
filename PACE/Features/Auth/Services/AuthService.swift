@@ -303,6 +303,7 @@ final class AuthService: ObservableObject {
     }
     
     private func clearUserScopedCaches() {
+        NotificationCenterService.shared.clearInMemoryCache()
         GoalService.shared.clearInMemoryCache()
         DailyLogService.shared.clearInMemoryCache()
         EvidenceService.shared.clearInMemoryCache()

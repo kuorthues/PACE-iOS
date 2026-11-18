@@ -13,6 +13,7 @@ final class GoalInvitationService: ObservableObject {
     static let shared = GoalInvitationService()
 
     @Published private(set) var invitations: [GoalInvitation] = []
+    @Published private(set) var hasLoaded = false
     @Published var errorMessage: String?
 
     #if canImport(FirebaseFirestore)
@@ -22,6 +23,8 @@ final class GoalInvitationService: ObservableObject {
     private var listeningUserId: String?
     private var receivedById: [String: GoalInvitation] = [:]
     private var sentById: [String: GoalInvitation] = [:]
+    private var hasLoadedReceived = false
+    private var hasLoadedSent = false
 
     private init() {}
 
@@ -61,6 +64,8 @@ final class GoalInvitationService: ObservableObject {
                         })
                         self.errorMessage = nil
                     }
+                    self.hasLoadedReceived = true
+                    self.updateLoadedState()
                     self.publishInvitations()
                 }
             }
@@ -78,6 +83,8 @@ final class GoalInvitationService: ObservableObject {
                         })
                         self.errorMessage = nil
                     }
+                    self.hasLoadedSent = true
+                    self.updateLoadedState()
                     self.publishInvitations()
                 }
             }
@@ -95,7 +102,14 @@ final class GoalInvitationService: ObservableObject {
         receivedById = [:]
         sentById = [:]
         invitations = []
+        hasLoadedReceived = false
+        hasLoadedSent = false
+        hasLoaded = false
         errorMessage = nil
+    }
+
+    private func updateLoadedState() {
+        hasLoaded = hasLoadedReceived && hasLoadedSent
     }
 
     private func publishInvitations() {

@@ -15,6 +15,7 @@ final class SharedGoalService: ObservableObject {
     @Published private(set) var goals: [SharedGoal] = []
     @Published private(set) var logsByGoal: [String: [DailyLog]] = [:]
     @Published private(set) var sourceGoalIdsInProgress: Set<String> = []
+    @Published private(set) var hasLoaded = false
     @Published var errorMessage: String?
 
     #if canImport(FirebaseFirestore)
@@ -36,6 +37,7 @@ final class SharedGoalService: ObservableObject {
         goals = []
         logsByGoal = [:]
         sourceGoalIdsInProgress = []
+        hasLoaded = false
         errorMessage = nil
     }
 
@@ -58,6 +60,7 @@ final class SharedGoalService: ObservableObject {
                     if let error {
                         self.errorMessage = "Shared goals could not sync: \(error.localizedDescription)"
                         self.goals = []
+                        self.hasLoaded = true
                         self.updateLogListeners(for: [])
                         return
                     }
@@ -72,6 +75,7 @@ final class SharedGoalService: ObservableObject {
                     self.goals = allGoals
                         .filter { $0.status == .active || ($0.status == .ended && $0.ownerId == userId) }
                         .sorted { $0.targetDate < $1.targetDate }
+                    self.hasLoaded = true
                     self.errorMessage = nil
                     self.updateLogListeners(for: self.goals)
                     for goal in self.goals where goal.ownerId == userId {
@@ -420,6 +424,36 @@ final class SharedGoalService: ObservableObject {
             .flatMap { DailyLog(id: $0.documentID, dictionary: $0.data()) }
         #else
         throw AuthError.firebaseNotConfigured("Shared progress requires Firebase.")
+        #endif
+    }
+
+    func fetchGoal(id goalId: String) async -> SharedGoal? {
+        #if canImport(FirebaseAuth) && canImport(FirebaseFirestore)
+        guard let userId = AuthService.shared.currentUser?.id,
+              AuthService.shared.isFirebaseConfigured,
+              Auth.auth().currentUser?.uid == userId else { return nil }
+
+        if let cached = goals.first(where: { $0.id == goalId && $0.memberIds.contains(userId) }) {
+            return cached
+        }
+
+        do {
+            let snapshot = try await Firestore.firestore()
+                .collection("sharedGoals")
+                .document(goalId)
+                .getDocument(source: .server)
+            guard Auth.auth().currentUser?.uid == userId,
+                  let goal = snapshot.data().flatMap({ SharedGoal(id: goalId, dictionary: $0) }),
+                  goal.memberIds.contains(userId),
+                  goal.status == .active || (goal.status == .ended && goal.ownerId == userId) else {
+                return nil
+            }
+            return goal
+        } catch {
+            return nil
+        }
+        #else
+        return nil
         #endif
     }
 

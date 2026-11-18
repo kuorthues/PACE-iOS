@@ -24,6 +24,7 @@ struct GoalsHomeView: View {
     @ObservedObject var profileService = PublicProfileService.shared
     @ObservedObject var sharedGoalService = SharedGoalService.shared
     @ObservedObject var invitationService = GoalInvitationService.shared
+    @ObservedObject private var notificationService = NotificationCenterService.shared
     @ObservedObject private var authService = AuthService.shared
     
     @State private var showCreateGoalSheet = false
@@ -39,6 +40,7 @@ struct GoalsHomeView: View {
     @State private var showPartnerDiscovery = false
     @State private var navigateToSharedGoal = false
     @State private var showInvitationManagement = false
+    @State private var showNotificationCenter = false
     @ScaledMetric(relativeTo: .largeTitle) private var countdownFontSize: CGFloat = 64
     
     var body: some View {
@@ -72,6 +74,7 @@ struct GoalsHomeView: View {
                 let userId = AuthService.shared.currentUser?.id
                 sharedGoalService.startListening(for: userId)
                 invitationService.startListening(for: userId)
+                notificationService.startListening(for: userId)
                 await goalService.fetchActiveGoals()
                 for goal in goalService.goals {
                     _ = await logService.fetchLogs(for: goal.id)
@@ -107,6 +110,7 @@ struct GoalsHomeView: View {
                 showPartnerDiscovery = false
                 navigateToSharedGoal = false
                 showInvitationManagement = false
+                showNotificationCenter = false
                 activePartnerProfiles = [:]
             }
             .sheet(isPresented: $showCreateGoalSheet) {
@@ -149,6 +153,9 @@ struct GoalsHomeView: View {
             .navigationDestination(isPresented: $showInvitationManagement) {
                 InvitationManagementView()
             }
+            .navigationDestination(isPresented: $showNotificationCenter) {
+                NotificationCenterView(service: notificationService)
+            }
             .navigationDestination(isPresented: $showPartnerDiscovery) {
                 PartnerDiscoveryView()
             }
@@ -176,6 +183,32 @@ struct GoalsHomeView: View {
             PACEBrandMark(logoSize: 30)
             
             Spacer(minLength: 8)
+
+            Button(action: {
+                showNotificationCenter = true
+            }) {
+                ZStack(alignment: .topTrailing) {
+                    Image(systemName: "bell")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundColor(PACETheme.primaryText)
+                        .frame(width: 36, height: 36)
+                        .background(PACETheme.surface)
+                        .overlay(Rectangle().stroke(PACETheme.border, lineWidth: 1))
+
+                    if notificationService.unreadCount > 0 {
+                        Circle()
+                            .fill(PACETheme.accent)
+                            .frame(width: 8, height: 8)
+                            .overlay(Circle().stroke(PACETheme.background, lineWidth: 1.5))
+                            .offset(x: -3, y: 3)
+                    }
+                }
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(notificationService.unreadCount > 0
+                ? "Notifications, \(notificationService.unreadCount) unread"
+                : "Notifications")
+            .accessibilityHint("Opens the in-app notification center")
             
             Button(action: {
                 showCreateGoalSheet = true
