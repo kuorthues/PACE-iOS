@@ -243,60 +243,43 @@ struct GoalsHomeView: View {
                 selectedGoalForLog = goal
             }
             
-            // Metrics Directly in Layout (NO CARDS)
+            // Compact statistics strip with aligned icon, label, and value columns.
             HStack(alignment: .top, spacing: 0) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("CURRENT STREAK")
-                        .font(PACETextStyle.pixelMetadata)
-                        .foregroundColor(PACETheme.secondaryText)
-                        .tracking(1.0)
-                    
-                    HStack(alignment: .firstTextBaseline, spacing: 5) {
-                        Image(systemName: "flame.fill")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundColor(PACETheme.accent)
-                            .accessibilityHidden(true)
-                        Text(String(format: "%02d", metrics.currentStreak))
-                            .font(.system(size: 22, weight: .black, design: .monospaced))
-                            .foregroundColor(PACETheme.primaryText)
-                    }
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel("Current streak, \(metrics.currentStreak) days")
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
+                dashboardMetric(
+                    icon: "flame.fill",
+                    label: "CURRENT STREAK",
+                    value: String(format: "%02d", metrics.currentStreak),
+                    accessibilityValue: "\(metrics.currentStreak) days",
+                    isAccent: metrics.currentStreak > 0
+                )
                 
                 Rectangle()
                     .fill(PACETheme.border)
-                    .frame(width: 1, height: 36)
-                    .padding(.horizontal, 10)
+                    .frame(width: 1, height: 54)
+                    .padding(.horizontal, 8)
                 
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("CONSISTENCY")
-                        .font(PACETextStyle.pixelMetadata)
-                        .foregroundColor(PACETheme.secondaryText)
-                        .tracking(1.0)
-                    Text(String(format: "%.0f%%", metrics.consistencyPercentage))
-                        .font(.system(size: 22, weight: .black, design: .monospaced))
-                        .foregroundColor(PACETheme.primaryText)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
+                dashboardMetric(
+                    icon: "chart.bar.fill",
+                    label: "CONSISTENCY",
+                    value: String(format: "%.0f%%", metrics.consistencyPercentage),
+                    accessibilityValue: "\(Int(metrics.consistencyPercentage.rounded())) percent",
+                    isAccent: true
+                )
                 
                 Rectangle()
                     .fill(PACETheme.border)
-                    .frame(width: 1, height: 36)
-                    .padding(.horizontal, 10)
+                    .frame(width: 1, height: 54)
+                    .padding(.horizontal, 8)
                 
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("ACTIVE DAYS")
-                        .font(PACETextStyle.pixelMetadata)
-                        .foregroundColor(PACETheme.secondaryText)
-                        .tracking(1.0)
-                    Text(String(format: "%02d", metrics.activeDays))
-                        .font(.system(size: 22, weight: .black, design: .monospaced))
-                        .foregroundColor(PACETheme.primaryText)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
+                dashboardMetric(
+                    icon: "calendar.badge.checkmark",
+                    label: "ACTIVE DAYS",
+                    value: String(format: "%02d", metrics.activeDays),
+                    accessibilityValue: "\(metrics.activeDays) days",
+                    isAccent: false
+                )
             }
+            .frame(maxWidth: .infinity)
             .padding(.vertical, 8)
             
             // Thin divider
@@ -314,6 +297,38 @@ struct GoalsHomeView: View {
                 .fill(PACETheme.border)
                 .frame(height: 1)
         }
+    }
+
+    private func dashboardMetric(
+        icon: String,
+        label: String,
+        value: String,
+        accessibilityValue: String,
+        isAccent: Bool
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 5) {
+                Image(systemName: icon)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(isAccent ? PACETheme.accent : PACETheme.secondaryText)
+                    .accessibilityHidden(true)
+                Text(label)
+                    .font(PACETextStyle.pixelMetadata)
+                    .foregroundColor(PACETheme.secondaryText)
+                    .tracking(0.8)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+            }
+            Text(value)
+                .font(PACETextStyle.metricMedium)
+                .foregroundColor(isAccent ? PACETheme.accent : PACETheme.primaryText)
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(label), \(accessibilityValue)")
     }
     
     // MARK: - Secondary Goals Section
@@ -334,25 +349,40 @@ struct GoalsHomeView: View {
                     selectedGoalForDetail = goal
                     navigateToDetail = true
                 }) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
                             Text(goal.title.uppercased())
-                                .font(.system(size: 15, weight: .bold, design: .default))
+                                .font(PACETextStyle.displaySmall)
                                 .foregroundColor(PACETheme.primaryText)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
                             
-                            Spacer()
+                            Spacer(minLength: 4)
                             
-                            Image(systemName: "arrow.right")
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundColor(PACETheme.secondaryText)
+                            Image(systemName: "arrow.up.right")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundColor(PACETheme.accent)
+                                .accessibilityHidden(true)
                         }
                         
-                        Text(String(format: "%02d DAYS — STREAK %02d", metrics.daysRemaining, metrics.currentStreak))
-                            .font(.system(size: 11, weight: .medium, design: .monospaced))
-                            .foregroundColor(PACETheme.secondaryText)
-                            .tracking(1.0)
+                        HStack(spacing: 8) {
+                            Image(systemName: "target")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(PACETheme.secondaryText)
+                                .accessibilityHidden(true)
+                            Text(String(format: "%02d DAYS", metrics.daysRemaining))
+                            Text("·")
+                            Text(String(format: "STREAK %02d", metrics.currentStreak))
+                        }
+                        .font(PACETextStyle.pixelMetadata)
+                        .foregroundColor(PACETheme.secondaryText)
+                        .tracking(0.8)
                     }
-                    .padding(.vertical, 14)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(PACETheme.surface)
+                    .overlay(Rectangle().stroke(PACETheme.border, lineWidth: 1))
                 }
                 .buttonStyle(.plain)
                 

@@ -26,6 +26,8 @@ struct InsightsPlaceholderView: View {
     
     @State private var selectedGoalId: String? = nil
     @State private var reportingPeriod: InsightsReportingPeriod = .sevenDays
+    @State private var selectedBarDate: Date? = nil
+    @State private var showConsistencyExplanation = false
 
     private var selectedGoalTitle: String {
         guard let selectedGoalId else { return "ALL GOALS" }
@@ -54,6 +56,14 @@ struct InsightsPlaceholderView: View {
         }
         return periodDates.map { minutesByDay[$0] ?? 0 }
     }
+
+    private var dailySessionCounts: [Int] {
+        let calendar = Calendar.current
+        let sessionsByDay = scopedLogs.reduce(into: [Date: Int]()) { result, log in
+            result[calendar.startOfDay(for: log.date), default: 0] += 1
+        }
+        return periodDates.map { sessionsByDay[$0] ?? 0 }
+    }
     
     private var totalMinutes: Int {
         scopedLogs.reduce(0) { $0 + $1.durationMinutes }
@@ -64,14 +74,6 @@ struct InsightsPlaceholderView: View {
         return totalMinutes / scopedLogs.count
     }
 
-    private var longestStreak: Int {
-        let goals = selectedGoalId.flatMap { id in
-            goalService.goals.first(where: { $0.id == id }).map { [$0] }
-        } ?? goalService.goals
-        return goals.map {
-            GoalAnalytics.compute(goal: $0, logs: logService.logsByGoal[$0.id] ?? []).longestStreak
-        }.max() ?? 0
-    }
 
     private var consistencyPercentage: Double? {
         let calendar = Calendar.current
@@ -115,24 +117,29 @@ struct InsightsPlaceholderView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
+                VStack(alignment: .leading, spacing: 20) {
                     Text("INSIGHTS")
                         .font(PACETextStyle.displayLarge)
                         .foregroundColor(PACETheme.primaryText)
-                        .padding(.top, 16)
+                        .padding(.top, 4)
                     
                     filterSection
                     editorialMetricsGrid
                     Rectangle().fill(PACETheme.border).frame(height: 1)
                     dailyEffortSection
-                    Rectangle().fill(PACETheme.border).frame(height: 1)
-                    activityDistributionSection
-                    Rectangle().fill(PACETheme.border).frame(height: 1)
-                    insightSummarySection
-                    Spacer(minLength: 40)
+
+                    if !activityDistribution.isEmpty {
+                        Rectangle().fill(PACETheme.border).frame(height: 1)
+                        activityDistributionSection
+                    }
+
+                    Spacer(minLength: 20)
                 }
                 .padding(.horizontal, 20)
+                .padding(.bottom, 16)
             }
+            .safeAreaPadding(.top, 8)
+            .safeAreaPadding(.bottom, 16)
             .background(PACETheme.background.ignoresSafeArea())
             .toolbar(.hidden, for: .navigationBar)
             .task {
@@ -144,6 +151,12 @@ struct InsightsPlaceholderView: View {
                    !goalService.goals.contains(where: { $0.id == selectedGoalId }) {
                     self.selectedGoalId = nil
                 }
+            }
+            .onChange(of: selectedGoalId) { _, _ in
+                selectedBarDate = nil
+            }
+            .onChange(of: reportingPeriod) { _, _ in
+                selectedBarDate = nil
             }
         }
     }
@@ -206,7 +219,7 @@ struct InsightsPlaceholderView: View {
             metric(label: "TOTAL TIME", value: totalMinutes == 0 ? "—" : formatDuration(totalMinutes))
             metric(label: "AVG SESSION", value: scopedLogs.isEmpty ? "—" : formatDuration(averageSessionMinutes))
             metric(label: "SESSIONS", value: "\(scopedLogs.count)")
-            metric(label: "CONSISTENCY", value: consistencyPercentage.map { String(format: "%.0f%%", $0) } ?? "—")
+            consistencyMetric
         }
     }
 
@@ -226,6 +239,40 @@ struct InsightsPlaceholderView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
+
+    private var consistencyMetric: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 6) {
+                Text("CONSISTENCY")
+                    .font(PACETextStyle.pixelMetadata)
+                    .foregroundColor(PACETheme.secondaryText)
+                    .tracking(1)
+                Button {
+                    showConsistencyExplanation.toggle()
+                } label: {
+                    Image(systemName: "info.circle")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(PACETheme.accent)
+                        .frame(width: 28, height: 28)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Explain consistency")
+            }
+            Text(consistencyPercentage.map { String(format: "%.0f%%", $0) } ?? "—")
+                .font(.system(.title3, design: .monospaced).weight(.black))
+                .foregroundColor(PACETheme.accent)
+                .monospacedDigit()
+
+            if showConsistencyExplanation {
+                Text("Logged sessions divided by scheduled days in this period.")
+                    .font(PACETextStyle.pixelMetadata)
+                    .foregroundColor(PACETheme.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .contain)
+    }
     
     private var dailyEffortSection: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -244,110 +291,97 @@ struct InsightsPlaceholderView: View {
                 Text("No logged time in this reporting period.")
                     .font(PACETextStyle.body)
                     .foregroundColor(PACETheme.secondaryText)
-                    .frame(maxWidth: .infinity, minHeight: 120, alignment: .leading)
+                    .frame(maxWidth: .infinity, minHeight: 112, alignment: .leading)
             } else {
                 let maxMinutes = max(dailyMinutes.max() ?? 0, 1)
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(alignment: .bottom, spacing: 4) {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(alignment: .bottom, spacing: 6) {
                         ForEach(periodDates.indices, id: \.self) { index in
+                            let date = periodDates[index]
                             let minutes = dailyMinutes[index]
-                            VStack(spacing: 5) {
-                                Text(minutes == 0 ? "—" : formatDuration(minutes))
-                                    .font(PACETextStyle.pixelMetadata)
-                                    .foregroundColor(minutes == 0 ? PACETheme.mutedText : PACETheme.secondaryText)
-                                    .lineLimit(1)
-                                    .minimumScaleFactor(0.65)
-                                GeometryReader { proxy in
-                                    VStack {
-                                        Spacer()
+                            let isSelected = selectedBarDate.map { Calendar.current.isDate($0, inSameDayAs: date) } ?? false
+                            Button {
+                                selectedBarDate = date
+                            } label: {
+                                VStack(spacing: 5) {
+                                    ZStack(alignment: .bottom) {
+                                        Rectangle()
+                                            .fill(PACETheme.surface)
                                         Rectangle()
                                             .fill(minutes == 0 ? PACETheme.border : PACETheme.accent)
-                                            .frame(height: max(2, proxy.size.height * CGFloat(minutes) / CGFloat(maxMinutes)))
+                                            .frame(height: max(2, 88 * CGFloat(minutes) / CGFloat(maxMinutes)))
+                                    }
+                                    .frame(width: reportingPeriod == .sevenDays ? 32 : 22, height: 88)
+                                    .overlay(Rectangle().stroke(isSelected ? PACETheme.accent : PACETheme.border, lineWidth: isSelected ? 2 : 1))
+
+                                    if shouldShowDateLabel(index) {
+                                        Text(date.formatted(.dateTime.weekday(.narrow)))
+                                            .font(PACETextStyle.pixelMetadata)
+                                            .foregroundColor(Calendar.current.isDateInToday(date) ? PACETheme.accent : PACETheme.mutedText)
+                                    } else {
+                                        Color.clear.frame(height: 12)
                                     }
                                 }
-                                .frame(height: 82)
-                                Text(periodDates[index].formatted(.dateTime.weekday(.narrow)))
-                                    .font(PACETextStyle.pixelMetadata)
-                                    .foregroundColor(Calendar.current.isDateInToday(periodDates[index]) ? PACETheme.accent : PACETheme.mutedText)
                             }
-                            .frame(maxWidth: .infinity)
-                            .accessibilityElement(children: .ignore)
-                            .accessibilityLabel("\(periodDates[index].formatted(date: .complete, time: .omitted)), \(minutes) minutes")
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("\(date.formatted(date: .complete, time: .omitted)), \(minutes) minutes, \(dailySessionCounts[index]) sessions")
                         }
                     }
-                    Rectangle().fill(PACETheme.border).frame(height: 1)
-                    Text("Bars show logged session time. Labels use minutes below one hour and hours above one hour.")
-                        .font(PACETextStyle.pixelMetadata)
-                        .foregroundColor(PACETheme.secondaryText)
-                        .fixedSize(horizontal: false, vertical: true)
+                    .frame(minWidth: reportingPeriod == .sevenDays ? 300 : CGFloat(periodDates.count * 28), minHeight: 112, alignment: .bottom)
+                    .padding(.horizontal, 2)
                 }
-                .accessibilityElement(children: .contain)
+
+                if let selectedBarDate,
+                   let index = periodDates.firstIndex(where: { Calendar.current.isDate($0, inSameDayAs: selectedBarDate) }) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "info.circle")
+                            .foregroundColor(PACETheme.accent)
+                        Text("\(selectedBarDate.formatted(date: .abbreviated, time: .omitted)) · \(formatDuration(dailyMinutes[index])) · \(dailySessionCounts[index]) \(dailySessionCounts[index] == 1 ? "session" : "sessions")")
+                            .font(PACETextStyle.pixelMetadata)
+                            .foregroundColor(PACETheme.primaryText)
+                    }
+                    .accessibilityElement(children: .combine)
+                }
             }
         }
     }
     
+    private func shouldShowDateLabel(_ index: Int) -> Bool {
+        reportingPeriod == .sevenDays || index == 0 || index == periodDates.count - 1 || index.isMultiple(of: 5)
+    }
+
     private var activityDistributionSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("ACTIVITY DISTRIBUTION")
-                .font(PACETextStyle.pixelLabel)
-                .foregroundColor(PACETheme.secondaryText)
-                .tracking(1.5)
-            Text("Share of activity tags across \(scopedLogs.count) logged \(scopedLogs.count == 1 ? "session" : "sessions"); this is not time by activity.")
-                .font(.subheadline)
-                .foregroundColor(PACETheme.secondaryText)
+        let totalTags = activityDistribution.reduce(0) { $0 + $1.count }
 
-            if activityDistribution.isEmpty {
-                Text("No activity tags logged in this selection.")
-                    .font(PACETextStyle.body)
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(activityDistribution.count == 1 ? "TOP ACTIVITY" : "ACTIVITY TAGS")
+                    .font(PACETextStyle.pixelLabel)
                     .foregroundColor(PACETheme.secondaryText)
-            } else {
-                let totalTags = activityDistribution.reduce(0) { $0 + $1.count }
-                VStack(spacing: 14) {
-                    ForEach(activityDistribution, id: \.name) { item in
-                        let share = Double(item.count) / Double(totalTags)
-                        VStack(alignment: .leading, spacing: 7) {
-                            HStack(alignment: .firstTextBaseline) {
-                                Text(item.name)
-                                    .font(.system(.body, design: .monospaced).weight(.semibold))
-                                    .foregroundColor(PACETheme.primaryText)
-                                Spacer(minLength: 8)
-                                Text("\(Int((share * 100).rounded()))% · \(item.count)")
-                                    .font(PACETextStyle.pixelMetadata)
-                                    .foregroundColor(PACETheme.accent)
-                            }
-                            GeometryReader { proxy in
-                                ZStack(alignment: .leading) {
-                                    Rectangle().fill(PACETheme.surface)
-                                    Rectangle().fill(PACETheme.accent).frame(width: proxy.size.width * share)
-                                }
-                            }
-                            .frame(height: 6)
-                        }
-                        .accessibilityElement(children: .combine)
-                        .accessibilityLabel("\(item.name), \(item.count) of \(totalTags) activity tags, \(Int((share * 100).rounded())) percent")
+                    .tracking(1.5)
+                Spacer()
+                Text("\(activityDistribution[0].name) · \(activityDistribution[0].count)")
+                    .font(PACETextStyle.pixelMetadata)
+                    .foregroundColor(PACETheme.accent)
+                    .lineLimit(1)
+            }
+
+            if activityDistribution.count > 1 {
+                ForEach(activityDistribution.dropFirst(), id: \.name) { item in
+                    let share = Int((Double(item.count) / Double(totalTags) * 100).rounded())
+                    HStack {
+                        Text(item.name)
+                            .font(PACETextStyle.pixelMetadata)
+                            .foregroundColor(PACETheme.primaryText)
+                        Spacer()
+                        Text("\(share)% · \(item.count)")
+                            .font(PACETextStyle.pixelMetadata)
+                            .foregroundColor(PACETheme.secondaryText)
                     }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("\(item.name), \(item.count) of \(totalTags) activity tags, \(share) percent")
                 }
             }
-        }
-    }
-    
-    private var insightSummarySection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("HOW CONSISTENCY WORKS")
-                .font(PACETextStyle.pixelLabel)
-                .foregroundColor(PACETheme.secondaryText)
-                .tracking(1.5)
-
-            Text("Consistency counts logged sessions on scheduled days in the selected period. Planned rest days do not lower the percentage; unscheduled sessions are still included in session and time totals.")
-                .font(PACETextStyle.body)
-                .foregroundColor(PACETheme.primaryText)
-                .lineSpacing(4)
-
-            Text(scopedLogs.isEmpty
-                 ? "Log a session to see factual progress summaries."
-                 : "\(scopedLogs.count) \(scopedLogs.count == 1 ? "session" : "sessions") logged · \(formatDuration(totalMinutes)) total · longest streak \(longestStreak) \(longestStreak == 1 ? "day" : "days").")
-                .font(PACETextStyle.pixelMetadata)
-                .foregroundColor(PACETheme.accent)
         }
     }
 

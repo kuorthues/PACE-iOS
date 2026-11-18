@@ -211,11 +211,27 @@ struct JourneyOverviewList: View {
                             Text(day.formattedFullDate)
                                 .font(PACETypography.body())
                                 .foregroundColor(PACEColor.textPrimary)
-                            if let log = day.log {
-                                Text(log.selectedActivities.joined(separator: " • "))
-                                    .font(PACETypography.caption())
-                                    .foregroundColor(PACEColor.textSecondary)
-                                    .lineLimit(2)
+                            if !day.logs.isEmpty {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    ForEach(day.logs) { log in
+                                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                            Text(log.selectedActivities.joined(separator: " • "))
+                                                .font(PACETypography.caption())
+                                                .foregroundColor(PACEColor.textSecondary)
+                                                .lineLimit(1)
+                                            Spacer(minLength: 4)
+                                            Text(log.formattedDuration)
+                                                .font(PACETextStyle.pixelMetadata)
+                                                .foregroundColor(PACEColor.accent)
+                                                .lineLimit(1)
+                                        }
+                                    }
+                                    if day.logs.count > 1 {
+                                        Text("\(day.logs.count) SESSIONS GROUPED FOR THIS DATE")
+                                            .font(PACETextStyle.pixelMetadata)
+                                            .foregroundColor(PACEColor.mutedText)
+                                    }
+                                }
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)

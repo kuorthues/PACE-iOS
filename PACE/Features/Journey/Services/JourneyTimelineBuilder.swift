@@ -51,16 +51,18 @@ enum JourneyTimelineBuilder {
         let components = calendar.dateComponents([.day], from: startDate, to: targetDate)
         let totalDays = max(1, (components.day ?? 0) + 1)
         
-        // Map logs by date string
-        var logsByDate: [String: DailyLog] = [:]
+        // Preserve every saved session by calendar date; the Journey UI groups
+        // same-day sessions instead of dropping all but one.
+        var logsByDate: [String: [DailyLog]] = [:]
         for log in logs {
-            // If multiple logs on same date, prefer one with evidence
-            if let existing = logsByDate[log.dateString] {
-                if existing.evidenceId == nil && log.evidenceId != nil {
-                    logsByDate[log.dateString] = log
+            logsByDate[log.dateString, default: []].append(log)
+        }
+        for dateString in logsByDate.keys {
+            logsByDate[dateString]?.sort {
+                if ($0.evidenceId != nil) != ($1.evidenceId != nil) {
+                    return $0.evidenceId != nil
                 }
-            } else {
-                logsByDate[log.dateString] = log
+                return $0.updatedAt > $1.updatedAt
             }
         }
         
@@ -91,27 +93,33 @@ enum JourneyTimelineBuilder {
             let isPast = currentDay < today
             let isFuture = currentDay > today
             
-            let log = logsByDate[dString]
+            let dayLogs = logsByDate[dString] ?? []
+            let log = dayLogs.first
             
             let attachedEvidence: [EvidenceItem]
-            if let log {
-                var candidates = evidenceByLogId[log.id] ?? []
-                if log.id != dString {
-                    candidates.append(contentsOf: evidenceByLogId[dString] ?? [])
-                }
-                if let evidenceId = log.evidenceId,
-                   let linkedEvidence = evidenceById[evidenceId],
-                   !candidates.contains(where: { $0.id == linkedEvidence.id }) {
-                    candidates.append(linkedEvidence)
+            if !dayLogs.isEmpty {
+                var candidates: [EvidenceItem] = []
+                for dayLog in dayLogs {
+                    candidates.append(contentsOf: evidenceByLogId[dayLog.id] ?? [])
+                    if dayLog.id != dString {
+                        candidates.append(contentsOf: evidenceByLogId[dString] ?? [])
+                    }
+                    if let evidenceId = dayLog.evidenceId,
+                       let linkedEvidence = evidenceById[evidenceId] {
+                        candidates.append(linkedEvidence)
+                    }
                 }
                 attachedEvidence = candidates
             } else {
                 attachedEvidence = evidenceByLogId[dString] ?? []
             }
-            let sortedEvidence = attachedEvidence.sorted {
-                if $0.createdAt == $1.createdAt { return $0.id < $1.id }
-                return $0.createdAt < $1.createdAt
-            }
+            var seenEvidenceIds = Set<String>()
+            let sortedEvidence = attachedEvidence
+                .filter { seenEvidenceIds.insert($0.id).inserted }
+                .sorted {
+                    if $0.createdAt == $1.createdAt { return $0.id < $1.id }
+                    return $0.createdAt < $1.createdAt
+                }
             
             
             // State resolution
@@ -141,6 +149,7 @@ enum JourneyTimelineBuilder {
                 isToday: isToday,
                 isTarget: isTarget,
                 log: log,
+                logs: dayLogs,
                 evidenceItems: sortedEvidence
             )
             journeyDays.append(day)
@@ -170,7 +179,7 @@ enum JourneyTimelineBuilder {
                 if day.isScheduled { scheduledPastCount += 1 }
             case .completedWithEvidence:
                 completed += 1
-                evidenceCount += max(day.evidenceItems.count, day.log?.evidenceId == nil ? 0 : 1)
+                evidenceCount += day.evidenceItems.count
                 if day.isScheduled { scheduledPastCount += 1 }
             case .missed:
                 missed += 1

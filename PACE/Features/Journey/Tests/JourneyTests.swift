@@ -146,24 +146,24 @@ final class JourneyTests {
         // Check Day -2 (Index 1)
         assert(resolvedDays[1].state == .completed, "Day -2 resolved to .completed")
         assert(resolvedDays[1].evidenceItems.isEmpty, "Day -2 has no evidence")
-        let missingMetadataLog = DailyLog(
+        let staleEvidenceLog = DailyLog(
             goalId: testGoal.id,
             date: logDayMinus2,
             selectedActivities: ["Review"],
             durationMinutes: 45,
             evidenceId: "metadata_missing"
         )
-        let missingMetadataDays = JourneyTimelineBuilder.buildTimeline(
+        let staleEvidenceDays = JourneyTimelineBuilder.buildTimeline(
             goal: testGoal,
-            logs: [missingMetadataLog],
+            logs: [staleEvidenceLog],
             evidenceItems: [],
             asOf: today,
             calendar: calendar
         )
-        let missingMetadataDateString = DailyLog.dateFormatter.string(from: logDayMinus2)
-        let missingMetadataDay = missingMetadataDays.first(where: { $0.id == missingMetadataDateString })
-        assert(missingMetadataDay?.state == .completedWithEvidence, "Missing evidence metadata preserves proof state")
-        assert(missingMetadataDay?.evidenceItems.isEmpty == true, "Missing evidence metadata exposes no unrelated photos")
+        let staleEvidenceDateString = DailyLog.dateFormatter.string(from: logDayMinus2)
+        let staleEvidenceDay = staleEvidenceDays.first(where: { $0.id == staleEvidenceDateString })
+        assert(staleEvidenceDay?.state == .completed, "Stale evidence reference does not create a proof state")
+        assert(staleEvidenceDay?.evidenceItems.isEmpty == true, "Stale evidence reference exposes no unrelated photos")
         
         // Check Day -1 (Index 2)
         assert(resolvedDays[2].state == .missed, "Day -1 resolved to .missed (unlogged past scheduled day)")

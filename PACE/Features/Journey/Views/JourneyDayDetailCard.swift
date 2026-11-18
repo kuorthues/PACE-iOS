@@ -133,13 +133,15 @@ struct JourneyDayDetailCard: View {
         VStack(alignment: .leading, spacing: 14) {
             // Metrics Row: Duration + Entry Time
             if let log = day.log {
+                let sessionLogs = day.logs.isEmpty ? [log] : day.logs
+                let totalMinutes = sessionLogs.reduce(0) { $0 + $1.durationMinutes }
                 HStack(spacing: 16) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("INVESTED DURATION")
+                        Text(sessionLogs.count > 1 ? "TOTAL INVESTED DURATION" : "INVESTED DURATION")
                             .font(PACETypography.caption())
                             .foregroundColor(PACEColor.textSecondary)
                         
-                        Text(log.formattedDuration.uppercased())
+                        Text(formatDuration(totalMinutes).uppercased())
                             .font(PACETypography.metricMedium())
                             .foregroundColor(PACEColor.accent)
                     }
@@ -163,7 +165,7 @@ struct JourneyDayDetailCard: View {
                         .font(PACETypography.caption())
                         .foregroundColor(PACEColor.textSecondary)
                     
-                    Text(log.selectedActivities.joined(separator: " • ").uppercased())
+                    Text(sessionLogs.flatMap(\.selectedActivities).joined(separator: " • ").uppercased())
                         .font(PACETypography.body())
                         .foregroundColor(PACEColor.textPrimary)
                         .padding(10)
@@ -175,13 +177,17 @@ struct JourneyDayDetailCard: View {
                 }
                 
                 // Note
-                if let note = log.note, !note.isEmpty {
+                let notes = sessionLogs.compactMap { session in
+                    guard let note = session.note, !note.isEmpty else { return nil }
+                    return note
+                }
+                if !notes.isEmpty {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("NOTES & REFLECTION")
                             .font(PACETypography.caption())
                             .foregroundColor(PACEColor.textSecondary)
                         
-                        Text(note)
+                        Text(notes.joined(separator: "\n\n"))
                             .font(PACETypography.body())
                             .foregroundColor(PACEColor.textPrimary)
                             .padding(10)
@@ -510,6 +516,15 @@ struct JourneyDayDetailCard: View {
                     )
             }
         }
+    }
+
+    private func formatDuration(_ minutes: Int) -> String {
+        if minutes >= 60 {
+            let hours = minutes / 60
+            let remainder = minutes % 60
+            return remainder == 0 ? "\(hours)H" : "\(hours)H \(remainder)M"
+        }
+        return "\(minutes)M"
     }
 }
 

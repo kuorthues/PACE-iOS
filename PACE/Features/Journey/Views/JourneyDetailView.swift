@@ -42,8 +42,36 @@ struct JourneyDetailView: View {
         )
     }
     
-    private var visibleDays: [JourneyDay] {
-        days.filter { $0.state != .future || $0.isTarget }
+    private var historyDays: [JourneyDay] {
+        var entries = days.filter { $0.log != nil && !$0.isTarget }
+        if let target = days.first(where: { $0.isTarget }) {
+            if target.log != nil {
+                entries.append(target)
+                entries.append(
+                    JourneyDay(
+                        id: "\(target.id)-deadline",
+                        date: target.date,
+                        dateString: target.dateString,
+                        dayIndex: target.dayIndex,
+                        totalDays: target.totalDays,
+                        state: .target,
+                        isScheduled: target.isScheduled,
+                        isToday: target.isToday,
+                        isTarget: true,
+                        log: nil,
+                        logs: [],
+                        evidenceItems: []
+                    )
+                )
+            } else {
+                entries.append(target)
+            }
+        }
+        return entries
+    }
+
+    private var hasLoggedSessions: Bool {
+        goalLogs.contains { $0.goalId == goal.id }
     }
 
     private var summary: JourneySummaryMetrics {
@@ -72,8 +100,12 @@ struct JourneyDetailView: View {
                             .foregroundColor(PACETheme.secondaryText)
                             .tracking(1.5)
                         
+                        if !hasLoggedSessions {
+                            historyEmptyState
+                        }
+
                         JourneyOverviewList(
-                            days: visibleDays,
+                            days: historyDays,
                             selectedDay: $selectedDay,
                             onViewEvidence: { evidence in evidenceForViewer = evidence }
                         )
@@ -114,7 +146,7 @@ struct JourneyDetailView: View {
             _ = await logService.fetchLogs(for: goal.id)
             _ = await evidenceService.fetchEvidence(for: goal.id)
             if selectedDay == nil {
-                selectedDay = visibleDays.first(where: { $0.isToday }) ?? visibleDays.last
+                selectedDay = historyDays.first(where: { $0.isToday }) ?? historyDays.last
             }
         }
         .sheet(item: $dateForLogSheet) { date in
@@ -145,6 +177,22 @@ struct JourneyDetailView: View {
                 }
             )
         }
+    }
+
+    private var historyEmptyState: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "square.and.pencil")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(PACETheme.accent)
+            Text("NO LOGGED SESSIONS YET. YOUR TARGET DEADLINE IS SHOWN BELOW.")
+                .font(PACETextStyle.pixelMetadata)
+                .foregroundColor(PACETheme.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(PACETheme.surface)
+        .overlay(Rectangle().stroke(PACETheme.border, lineWidth: 1))
     }
     
     // MARK: - Header Banner
@@ -183,36 +231,75 @@ struct JourneyDetailView: View {
     // MARK: - Metrics Strip
     
     private var metricsStrip: some View {
-        VStack(spacing: 12) {
-            HStack(spacing: 12) {
-                PACEMetricView(
-                    label: "Days Completed",
-                    value: String(format: "%02d", summary.completedCount),
-                    unit: "DAYS",
-                    isAccentValue: summary.completedCount > 0
-                )
-                
-                PACEMetricView(
-                    label: "Photo Proofs",
-                    value: String(format: "%02d", summary.evidenceCount),
-                    unit: "ATTACHED"
-                )
+        LazyVGrid(
+            columns: [GridItem(.flexible()), GridItem(.flexible())],
+            alignment: .leading,
+            spacing: 18
+        ) {
+            journeyMetric(
+                icon: "checkmark.square",
+                label: "DAYS COMPLETED",
+                value: String(format: "%02d", summary.completedCount),
+                unit: "DAYS",
+                isAccent: summary.completedCount > 0
+            )
+            journeyMetric(
+                icon: "camera",
+                label: "PHOTO PROOFS",
+                value: String(format: "%02d", summary.evidenceCount),
+                unit: "ATTACHED",
+                isAccent: summary.evidenceCount > 0
+            )
+            journeyMetric(
+                icon: "chart.bar",
+                label: "CONSISTENCY",
+                value: String(format: "%.0f", summary.consistencyPercentage),
+                unit: "%",
+                isAccent: true
+            )
+            journeyMetric(
+                icon: "calendar",
+                label: "DAYS REMAINING",
+                value: String(format: "%02d", goal.daysRemaining),
+                unit: "DAYS",
+                isAccent: true
+            )
+        }
+    }
+
+    private func journeyMetric(
+        icon: String,
+        label: String,
+        value: String,
+        unit: String,
+        isAccent: Bool
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(isAccent ? PACETheme.accent : PACETheme.secondaryText)
+                    .accessibilityHidden(true)
+                Text(label)
+                    .font(PACETextStyle.pixelMetadata)
+                    .foregroundColor(PACETheme.secondaryText)
+                    .tracking(1.0)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
             }
-            
-            HStack(spacing: 12) {
-                PACEMetricView(
-                    label: "Consistency",
-                    value: String(format: "%.0f", summary.consistencyPercentage),
-                    unit: "%"
-                )
-                
-                PACEMetricView(
-                    label: "Horizon Remaining",
-                    value: String(format: "%02d", summary.daysRemaining),
-                    unit: "DAYS"
-                )
+            HStack(alignment: .firstTextBaseline, spacing: 5) {
+                Text(value)
+                    .font(PACETextStyle.metricMedium)
+                    .foregroundColor(isAccent ? PACETheme.accent : PACETheme.primaryText)
+                    .monospacedDigit()
+                Text(unit)
+                    .font(PACETextStyle.pixelMetadata)
+                    .foregroundColor(PACETheme.secondaryText)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(label), \(value) \(unit)")
     }
     
     // MARK: - Node Legend Section

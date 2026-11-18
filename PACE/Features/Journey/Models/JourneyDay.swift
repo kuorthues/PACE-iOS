@@ -54,7 +54,8 @@ struct JourneyDay: Identifiable, Equatable {
     let isScheduled: Bool // Whether this weekday is in goal.scheduledWeekdays
     let isToday: Bool
     let isTarget: Bool
-    let log: DailyLog?
+    let log: DailyLog? // Primary session for backward-compatible detail views
+    let logs: [DailyLog] // All sessions recorded on this calendar date
     let evidenceItems: [EvidenceItem]
     
     // MARK: - Formatting Helpers
