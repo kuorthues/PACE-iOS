@@ -1,0 +1,104 @@
+name: PACE iOS Simulator Screenshot
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feat/ui-ux-redesign
+    paths:
+      - "PACE/**"
+      - "PACEWidget/**"
+      - "Shared/**"
+      - "PACE.xcodeproj/**"
+      - "GoogleService-Info.plist"
+      - ".github/workflows/pace-simulator-screenshot.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  capture-welcome-screen:
+    name: Build and capture PACE welcome screen
+    runs-on: macos-26
+    timeout-minutes: 30
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      DERIVED_DATA: ${{ runner.temp }}/PACEWidgetScreenshotDerivedData
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Resolve Swift packages
+        run: xcodebuild -resolvePackageDependencies -project PACE.xcodeproj
+
+      - name: Build app and embedded widget extension
+        run: |
+          xcodebuild \
+            -project PACE.xcodeproj \
+            -target PACE \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -derivedDataPath "$DERIVED_DATA" \
+            CODE_SIGN_IDENTITY=- \
+            build
+
+          APP_PATH="$DERIVED_DATA/Build/Products/Debug-iphonesimulator/PACE.app"
+          test -d "$APP_PATH/PlugIns/PACEWidgetExtension.appex"
+
+      - name: Select iOS 26.5 iPhone simulator
+        id: simulator
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          import subprocess
+
+          result = subprocess.check_output(
+              ["xcrun", "simctl", "list", "devices", "available", "-j"],
+              text=True,
+          )
+          devices = json.loads(result)["devices"].get(
+              "com.apple.CoreSimulator.SimRuntime.iOS-26-5", []
+          )
+          device = next(
+              (item for item in devices
+               if item.get("name") == "iPhone 17 Pro" and item.get("isAvailable")),
+              None,
+          )
+          if device is None:
+              raise SystemExit("iPhone 17 Pro on iOS 26.5 is unavailable on this runner")
+          print(f"udid={device['udid']}")
+          PY
+
+      - name: Boot and launch PACE
+        env:
+          SIMULATOR_UDID: ${{ steps.simulator.outputs.udid }}
+        run: |
+          APP_PATH="$DERIVED_DATA/Build/Products/Debug-iphonesimulator/PACE.app"
+          xcrun simctl boot "$SIMULATOR_UDID"
+          xcrun simctl bootstatus "$SIMULATOR_UDID" -b
+          xcrun simctl ui "$SIMULATOR_UDID" appearance light
+          xcrun simctl install "$SIMULATOR_UDID" "$APP_PATH"
+          xcrun simctl launch "$SIMULATOR_UDID" mseud.edu.ph.PACE
+          sleep 5
+
+      - name: Capture welcome screen
+        env:
+          SIMULATOR_UDID: ${{ steps.simulator.outputs.udid }}
+        run: |
+          mkdir -p screenshots
+          xcrun simctl io "$SIMULATOR_UDID" screenshot \
+            "$GITHUB_WORKSPACE/screenshots/PACE-Welcome-iPhone-17-Pro.png"
+          test -s "$GITHUB_WORKSPACE/screenshots/PACE-Welcome-iPhone-17-Pro.png"
+
+      - name: Upload screenshot artifact
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: pace-ios-simulator-screenshot
+          path: screenshots/*.png
+          if-no-files-found: warn
+          retention-days: 7
