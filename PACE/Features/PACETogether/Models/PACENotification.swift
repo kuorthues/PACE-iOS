@@ -21,14 +21,14 @@ enum PACENotificationKind: Hashable {
 enum PACENotificationDestination: Hashable, Identifiable {
     case invitations
     case sharedGoal(String)
-    case sharedJourney(String)
+    case sharedJourney(String, logId: String)
     case sharedGoalLog(String)
 
     var id: String {
         switch self {
         case .invitations: return "invitations"
         case .sharedGoal(let goalId): return "goal:\(goalId)"
-        case .sharedJourney(let goalId): return "journey:\(goalId)"
+        case .sharedJourney(let goalId, let logId): return "journey:\(goalId):\(logId)"
         case .sharedGoalLog(let goalId): return "log:\(goalId)"
         }
     }

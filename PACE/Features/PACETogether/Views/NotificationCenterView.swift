@@ -167,8 +167,8 @@ struct NotificationCenterView: View {
             InvitationManagementView()
         case .sharedGoal(let goalId):
             SharedGoalNotificationDestinationView(goalId: goalId, mode: .detail)
-        case .sharedJourney(let goalId):
-            SharedGoalNotificationDestinationView(goalId: goalId, mode: .journey)
+        case .sharedJourney(let goalId, let logId):
+            SharedGoalNotificationDestinationView(goalId: goalId, mode: .journey(logId: logId))
         case .sharedGoalLog(let goalId):
             SharedGoalNotificationDestinationView(goalId: goalId, mode: .log)
         }
@@ -178,7 +178,7 @@ struct NotificationCenterView: View {
 private struct SharedGoalNotificationDestinationView: View {
     enum Mode {
         case detail
-        case journey
+        case journey(logId: String)
         case log
     }
 
@@ -193,8 +193,8 @@ private struct SharedGoalNotificationDestinationView: View {
                 switch mode {
                 case .detail:
                     SharedGoalDetailView(goal: goal)
-                case .journey:
-                    SharedJourneyView(goal: goal)
+                case .journey(let logId):
+                    SharedJourneyView(goal: goal, focusLogId: logId)
                 case .log:
                     SharedGoalDetailView(goal: goal, openLoggingOnAppear: true)
                 }

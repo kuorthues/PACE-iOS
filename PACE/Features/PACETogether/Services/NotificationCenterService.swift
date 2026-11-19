@@ -285,17 +285,19 @@ final class NotificationCenterService: ObservableObject {
 
         let goals = SharedGoalService.shared.goals.filter { $0.status == .active }
         for goal in goals {
+            let collaborationStart = goal.memberJoinedAt ?? goal.createdAt
             for log in SharedGoalService.shared.logsByGoal[goal.id] ?? [] {
                 guard let authorId = log.authorId,
                       authorId != userId,
-                      goal.memberIds.contains(authorId) else { continue }
+                      goal.memberIds.contains(authorId),
+                      log.createdAt >= collaborationStart else { continue }
                 events.append(PACENotification(
                     id: Self.eventId("activity", goal.id, log.id),
                     kind: .partnerActivity,
                     title: "PARTNER ACTIVITY",
                     message: "Your partner logged progress for \(goal.title).",
-                    createdAt: log.updatedAt,
-                    destination: .sharedJourney(goal.id),
+                    createdAt: log.createdAt,
+                    destination: .sharedJourney(goal.id, logId: log.id),
                     isRead: false
                 ))
             }

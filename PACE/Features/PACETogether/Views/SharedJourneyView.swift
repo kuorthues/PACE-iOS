@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SharedJourneyView: View {
     let goal: SharedGoal
+    var focusLogId: String? = nil
 
     @ObservedObject private var evidenceService = EvidenceService.shared
     @Environment(\.dismiss) private var dismiss
@@ -27,37 +28,41 @@ struct SharedJourneyView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("SHARED JOURNEY")
-                        .font(PACETextStyle.displayLarge)
-                        .foregroundColor(PACETheme.primaryText)
-                    Text("COMPLETED CONTRIBUTIONS ONLY · \(currentGoal.title.uppercased())")
-                        .font(PACETextStyle.pixelMetadata)
-                        .foregroundColor(PACETheme.secondaryText)
-                }
-                .padding(.bottom, 4)
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("SHARED JOURNEY")
+                            .font(PACETextStyle.displayLarge)
+                            .foregroundColor(PACETheme.primaryText)
+                        Text("COMPLETED CONTRIBUTIONS ONLY · \(currentGoal.title.uppercased())")
+                            .font(PACETextStyle.pixelMetadata)
+                            .foregroundColor(PACETheme.secondaryText)
+                    }
+                    .padding(.bottom, 4)
 
-                if logs.isEmpty {
-                    Text("NO COMPLETED ENTRIES YET. THE TARGET DEADLINE IS SHOWN BELOW.")
-                        .font(PACETextStyle.pixelMetadata)
-                        .foregroundColor(PACETheme.mutedText)
-                        .padding(12)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(PACETheme.surface)
-                        .overlay(Rectangle().stroke(PACETheme.border, lineWidth: 1))
-                }
+                    if logs.isEmpty {
+                        Text("NO COMPLETED ENTRIES YET. THE TARGET DEADLINE IS SHOWN BELOW.")
+                            .font(PACETextStyle.pixelMetadata)
+                            .foregroundColor(PACETheme.mutedText)
+                            .padding(12)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(PACETheme.surface)
+                            .overlay(Rectangle().stroke(PACETheme.border, lineWidth: 1))
+                    }
 
-                ForEach(entries) { entry in
-                    if entry.isDeadline {
-                        deadlineMarker(entry)
-                    } else {
-                        contributionDay(entry)
+                    ForEach(entries) { entry in
+                        if entry.isDeadline {
+                            deadlineMarker(entry)
+                        } else {
+                            contributionDay(entry)
+                        }
                     }
                 }
+                .padding(20)
             }
-            .padding(20)
+            .onAppear { scrollToFocusedLog(using: proxy) }
+            .onChange(of: logs.map(\.id)) { _, _ in scrollToFocusedLog(using: proxy) }
         }
         .background(PACETheme.background.ignoresSafeArea())
         .navigationTitle("SHARED JOURNEY")
@@ -130,8 +135,17 @@ struct SharedJourneyView: View {
             evidenceContent(for: log)
         }
         .padding(.top, 8)
+        .id(log.id)
         .overlay(alignment: .top) {
             Rectangle().fill(PACETheme.border).frame(height: 1)
+        }
+    }
+
+    private func scrollToFocusedLog(using proxy: ScrollViewProxy) {
+        guard let focusLogId,
+              logs.contains(where: { $0.id == focusLogId }) else { return }
+        withAnimation(.easeInOut(duration: 0.3)) {
+            proxy.scrollTo(focusLogId, anchor: .center)
         }
     }
 
