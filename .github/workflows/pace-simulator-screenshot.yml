@@ -17,88 +17,179 @@ permissions:
   contents: read
 
 jobs:
-  capture-welcome-screen:
-    name: Build and capture PACE welcome screen
+  build-and-screenshot:
+    name: Build PACE and capture simulator screenshot
     runs-on: macos-26
-    timeout-minutes: 30
-    env:
-      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
-      DERIVED_DATA: ${{ runner.temp }}/PACEWidgetScreenshotDerivedData
-
+    timeout-minutes: 45
     steps:
       - name: Check out source
         uses: actions/checkout@v6
 
-      - name: Show Xcode version
-        run: xcodebuild -version
+      - name: Configure derived data path
+        run: echo "DERIVED_DATA=$RUNNER_TEMP/PACEWidgetScreenshotDerivedData" >> "$GITHUB_ENV"
+
+      - name: Show Xcode, schemes, SDKs, and simulator devices
+        run: |
+          set -euo pipefail
+          echo "Selected developer directory:"
+          xcode-select -p
+          echo "Xcode version:"
+          xcodebuild -version
+          echo "Available project schemes and targets:"
+          xcodebuild -list -project PACE.xcodeproj
+          echo "Available SDKs:"
+          xcodebuild -showsdks
+          echo "Available simulator devices:"
+          xcrun simctl list devices available
 
       - name: Resolve Swift packages
-        run: xcodebuild -resolvePackageDependencies -project PACE.xcodeproj
+        run: xcodebuild -resolvePackageDependencies -project PACE.xcodeproj -scheme PACE
 
-      - name: Build app and embedded widget extension
+      - name: Build PACE app and embedded widget extension
         run: |
+          set -euo pipefail
           xcodebuild \
             -project PACE.xcodeproj \
-            -target PACE \
+            -scheme PACE \
             -configuration Debug \
-            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath "$DERIVED_DATA" \
-            CODE_SIGN_IDENTITY=- \
+            CODE_SIGNING_ALLOWED=NO \
             build
 
           APP_PATH="$DERIVED_DATA/Build/Products/Debug-iphonesimulator/PACE.app"
-          test -d "$APP_PATH/PlugIns/PACEWidgetExtension.appex"
+          WIDGET_PATH="$APP_PATH/PlugIns/PACEWidgetExtension.appex"
+          if [[ ! -d "$APP_PATH" ]]; then
+            echo "::error::PACE.app was not produced at $APP_PATH"
+            find "$DERIVED_DATA/Build/Products" -maxdepth 4 -print || true
+            exit 1
+          fi
+          if [[ ! -d "$WIDGET_PATH" ]]; then
+            echo "::error::PACEWidgetExtension.appex was not embedded in PACE.app"
+            find "$DERIVED_DATA/Build/Products" -maxdepth 5 -print || true
+            exit 1
+          fi
+          echo "Built app bundle: $APP_PATH"
+          echo "Embedded widget extension: $WIDGET_PATH"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP_PATH/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$WIDGET_PATH/Info.plist"
 
-      - name: Select iOS 26.5 iPhone simulator
+      - name: Select an installed compatible iPhone simulator
         id: simulator
         run: |
-          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          python3 - <<'PY'
           import json
+          import os
           import subprocess
+          import sys
 
-          result = subprocess.check_output(
+          settings_json = subprocess.check_output(
+              [
+                  "xcodebuild",
+                  "-showBuildSettings",
+                  "-json",
+                  "-project",
+                  "PACE.xcodeproj",
+                  "-scheme",
+                  "PACE",
+                  "-destination",
+                  "generic/platform=iOS Simulator",
+              ],
+              text=True,
+          )
+          settings = json.loads(settings_json)
+          app_settings = next(
+              (item["buildSettings"] for item in settings if item.get("target") == "PACE"),
+              None,
+          )
+          if app_settings is None:
+              raise SystemExit("Could not read PACE build settings to determine its minimum iOS version")
+
+          def version_tuple(value):
+              parts = [int(part) for part in value.split(".")]
+              return tuple((parts + [0, 0, 0])[:3])
+
+          minimum_ios = version_tuple(app_settings["IPHONEOS_DEPLOYMENT_TARGET"])
+          devices_json = subprocess.check_output(
               ["xcrun", "simctl", "list", "devices", "available", "-j"],
               text=True,
           )
-          devices = json.loads(result)["devices"].get(
-              "com.apple.CoreSimulator.SimRuntime.iOS-26-5", []
-          )
-          device = next(
-              (item for item in devices
-               if item.get("name") == "iPhone 17 Pro" and item.get("isAvailable")),
-              None,
-          )
-          if device is None:
-              raise SystemExit("iPhone 17 Pro on iOS 26.5 is unavailable on this runner")
-          print(f"udid={device['udid']}")
+          devices_by_runtime = json.loads(devices_json)["devices"]
+          prefix = "com.apple.CoreSimulator.SimRuntime.iOS-"
+          candidates = []
+          for runtime_id, devices in devices_by_runtime.items():
+              if not runtime_id.startswith(prefix):
+                  continue
+              runtime_version = version_tuple(runtime_id.removeprefix(prefix).replace("-", "."))
+              if runtime_version < minimum_ios:
+                  continue
+              for device in devices:
+                  if device.get("isAvailable") and device.get("name", "").startswith("iPhone"):
+                      candidates.append((runtime_version, runtime_id, device))
+
+          output_path = os.environ["GITHUB_OUTPUT"]
+          summary_path = os.environ["GITHUB_STEP_SUMMARY"]
+          with open(output_path, "a", encoding="utf-8") as output:
+              if not candidates:
+                  output.write("available=false\n")
+                  message = (
+                      "No installed, available iPhone Simulator runtime meets "
+                      f"PACE's minimum iOS version {app_settings['IPHONEOS_DEPLOYMENT_TARGET']}. "
+                      "The simulator screenshot steps were skipped; the generic iOS Simulator build passed."
+                  )
+                  print(message)
+                  with open(summary_path, "a", encoding="utf-8") as summary:
+                      summary.write(f"## Simulator screenshot skipped\n\n{message}\n")
+                  sys.exit(0)
+
+              runtime_version, runtime_id, device = max(
+                  candidates,
+                  key=lambda candidate: (candidate[0], candidate[2]["name"]),
+              )
+              output.write("available=true\n")
+              output.write(f"udid={device['udid']}\n")
+              output.write(f"device={device['name']}\n")
+              output.write(f"runtime={runtime_id}\n")
+          version_text = ".".join(str(part) for part in runtime_version[:2])
+          message = f"Using {device['name']} on iOS {version_text} for the screenshot."
+          print(message)
+          with open(summary_path, "a", encoding="utf-8") as summary:
+              summary.write(f"## Simulator selected\n\n{message}\n")
           PY
 
-      - name: Boot and launch PACE
+      - name: Boot simulator, install PACE, and launch it
+        if: ${{ steps.simulator.outputs.available == 'true' }}
         env:
           SIMULATOR_UDID: ${{ steps.simulator.outputs.udid }}
         run: |
-          APP_PATH="$DERIVED_DATA/Build/Products/Debug-iphonesimulator/PACE.app"
-          xcrun simctl boot "$SIMULATOR_UDID"
+          set -euo pipefail
+          if ! xcrun simctl list devices booted | grep -Fq "$SIMULATOR_UDID"; then
+            xcrun simctl boot "$SIMULATOR_UDID"
+          fi
           xcrun simctl bootstatus "$SIMULATOR_UDID" -b
           xcrun simctl ui "$SIMULATOR_UDID" appearance light
+          APP_PATH="$DERIVED_DATA/Build/Products/Debug-iphonesimulator/PACE.app"
           xcrun simctl install "$SIMULATOR_UDID" "$APP_PATH"
           xcrun simctl launch "$SIMULATOR_UDID" mseud.edu.ph.PACE
           sleep 5
 
-      - name: Capture welcome screen
+      - name: Capture simulator screenshot
+        if: ${{ steps.simulator.outputs.available == 'true' }}
         env:
           SIMULATOR_UDID: ${{ steps.simulator.outputs.udid }}
         run: |
+          set -euo pipefail
           mkdir -p screenshots
           xcrun simctl io "$SIMULATOR_UDID" screenshot \
-            "$GITHUB_WORKSPACE/screenshots/PACE-Welcome-iPhone-17-Pro.png"
-          test -s "$GITHUB_WORKSPACE/screenshots/PACE-Welcome-iPhone-17-Pro.png"
+            "$GITHUB_WORKSPACE/screenshots/PACE-Welcome-iOS-Simulator.png"
+          test -s "$GITHUB_WORKSPACE/screenshots/PACE-Welcome-iOS-Simulator.png"
 
-      - name: Upload screenshot artifact
-        if: ${{ always() }}
+      - name: Upload simulator screenshot
+        if: ${{ success() && steps.simulator.outputs.available == 'true' && hashFiles('screenshots/*.png') != '' }}
         uses: actions/upload-artifact@v6
         with:
           name: pace-ios-simulator-screenshot
           path: screenshots/*.png
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 7
