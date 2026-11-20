@@ -392,7 +392,7 @@ final class SharedGoalService: ObservableObject {
         }
     }
 
-    private func runTransaction(_ update: @escaping (Transaction, NSErrorPointer) -> Any?) async throws {
+    private func runTransaction(_ update: @escaping (FirebaseFirestore.Transaction, NSErrorPointer) -> Any?) async throws {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             Firestore.firestore().runTransaction(update) { _, error in
                 if let error {

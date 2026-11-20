@@ -13,7 +13,11 @@ final class PACEWidgetSyncService {
 
     private init() {}
 
-    func markNeedsSync(for accountId: String? = AuthService.shared.currentUser?.id) {
+    func markNeedsSync() {
+        markNeedsSync(for: AuthService.shared.currentUser?.id)
+    }
+
+    func markNeedsSync(for accountId: String?) {
         guard let accountId, !accountId.isEmpty else {
             clearForSignedOut()
             return
