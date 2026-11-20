@@ -25,21 +25,21 @@ struct PACEWidgetGoalEntity: AppEntity, Identifiable {
 
     init(snapshot: PACEWidgetSnapshot, accountId: String) {
         self.id = Self.identifier(accountId: accountId, kind: snapshot.kind, goalId: snapshot.goalId)
-        self.name = snapshot.title
-        self.details = Self.details(for: snapshot)
         self.accountId = accountId
         self.goalId = snapshot.goalId
         self.goalKind = snapshot.kind.rawValue
+        self.name = snapshot.title
+        self.details = Self.details(for: snapshot)
     }
 
     init(unavailableIdentifier: String) {
         let parts = Self.parseIdentifier(unavailableIdentifier)
         self.id = unavailableIdentifier
-        self.name = "Unavailable goal"
-        self.details = "Open PACE to sync or choose another goal"
         self.accountId = parts?.accountId ?? ""
         self.goalId = parts?.goalId ?? ""
         self.goalKind = parts?.kind.rawValue ?? ""
+        self.name = "Unavailable goal"
+        self.details = "Open PACE to sync or choose another goal"
     }
 
     static func identifier(accountId: String, kind: PACEWidgetGoalKind, goalId: String) -> String {
