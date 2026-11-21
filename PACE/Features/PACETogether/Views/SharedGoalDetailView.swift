@@ -163,15 +163,19 @@ struct SharedGoalDetailView: View {
                  : "Your access ends immediately after this change. The owner retains the goal and all recorded contributions; nothing is deleted.")
         }
         .onChange(of: sharedService.goals) { _, goals in
-            guard let updatedGoal = goals.first(where: { $0.id == goal.id }) else {
-                dismiss()
-                return
-            }
-            goal = updatedGoal
-            if updatedGoal.status != .active {
-                showLogSheet = false
-                showEditSheet = false
-            }
+            handleSharedGoalsChanged(goals)
+        }
+    }
+
+    private func handleSharedGoalsChanged(_ goals: [SharedGoal]) {
+        guard let updatedGoal = goals.first(where: { $0.id == goal.id }) else {
+            dismiss()
+            return
+        }
+        goal = updatedGoal
+        if updatedGoal.status != .active {
+            showLogSheet = false
+            showEditSheet = false
         }
     }
 
