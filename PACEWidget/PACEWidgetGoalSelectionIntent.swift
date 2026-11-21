@@ -83,8 +83,10 @@ struct PACEWidgetGoalQuery: EntityQuery {
 
     func suggestedEntities() async throws -> [PACEWidgetGoalEntity] {
         guard let catalog = readyCatalog(), let accountId = catalog.accountId else { return [] }
-        return catalog.orderedGoals()
-            .map { PACEWidgetGoalEntity(snapshot: $0, accountId: accountId) }
+        return await MainActor.run {
+            catalog.orderedGoals()
+                .map { PACEWidgetGoalEntity(snapshot: $0, accountId: accountId) }
+        }
     }
 
     private func readyCatalog() -> PACEWidgetSnapshotCatalog? {

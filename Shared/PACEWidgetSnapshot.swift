@@ -1,11 +1,11 @@
 import Foundation
 
-enum PACEWidgetGoalKind: String, Codable, Equatable {
+enum PACEWidgetGoalKind: String, Codable, Equatable, Sendable {
     case solo
     case shared
 }
 
-struct PACEWidgetSnapshot: Codable, Equatable, Identifiable {
+struct PACEWidgetSnapshot: Codable, Equatable, Identifiable, Sendable {
     let goalId: String
     let title: String
     let kind: PACEWidgetGoalKind
@@ -20,13 +20,13 @@ struct PACEWidgetSnapshot: Codable, Equatable, Identifiable {
     var id: String { "\(kind.rawValue):\(goalId)" }
 }
 
-enum PACEWidgetCatalogStatus: String, Codable {
+enum PACEWidgetCatalogStatus: String, Codable, Sendable {
     case ready
     case needsSync
     case signedOut
 }
 
-struct PACEWidgetSnapshotCatalog: Codable, Equatable {
+struct PACEWidgetSnapshotCatalog: Codable, Equatable, Sendable {
     static let currentSchemaVersion = 2
 
     let schemaVersion: Int

@@ -177,7 +177,7 @@ struct JourneyDayDetailCard: View {
                 }
                 
                 // Note
-                let notes = sessionLogs.compactMap { session in
+                let notes: [String] = sessionLogs.compactMap { session -> String? in
                     guard let note = session.note, !note.isEmpty else { return nil }
                     return note
                 }
