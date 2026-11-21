@@ -61,7 +61,11 @@ struct SharedGoalDetailView: View {
                         .font(PACETextStyle.displayLarge)
                         .foregroundColor(PACETheme.primaryText)
                         .fixedSize(horizontal: false, vertical: true)
-                    Text("TARGET \(goal.targetDateForDisplay.formatted(date: .complete, time: .omitted).uppercased()) · \(goal.countdownDays) DAYS REMAINING")
+                    let targetDateText = goal.targetDateForDisplay
+                        .formatted(date: .complete, time: .omitted)
+                        .uppercased()
+                    let countdownText = "\(goal.countdownDays) DAYS REMAINING"
+                    Text("TARGET \(targetDateText) · \(countdownText)")
                         .font(PACETextStyle.pixelMetadata)
                         .foregroundColor(PACETheme.secondaryText)
                     Text(goal.scheduleDescription)
