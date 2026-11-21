@@ -105,6 +105,48 @@ test("notification read state is private to its account", async () => {
   }));
 });
 
+test("a public username must match its normalized reservation", async () => {
+  const impersonatorDb = testEnvironment.authenticatedContext("impersonator").firestore();
+  const forgedBatch = writeBatch(impersonatorDb);
+  forgedBatch.set(doc(impersonatorDb, "publicProfiles/impersonator"), {
+    userId: "impersonator",
+    username: "victim",
+    usernameNormalized: "impersonator",
+    displayName: "Forged handle",
+    bio: "",
+    isDiscoverable: true,
+    lookingForPartner: false,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+  forgedBatch.set(doc(impersonatorDb, "usernames/impersonator"), {
+    userId: "impersonator",
+    usernameNormalized: "impersonator",
+    createdAt: serverTimestamp(),
+  });
+  await assertFails(forgedBatch.commit());
+
+  const validDb = testEnvironment.authenticatedContext("valid-profile").firestore();
+  const validBatch = writeBatch(validDb);
+  validBatch.set(doc(validDb, "publicProfiles/valid-profile"), {
+    userId: "valid-profile",
+    username: "PACE.User",
+    usernameNormalized: "pace.user",
+    displayName: "Valid User",
+    bio: "",
+    isDiscoverable: true,
+    lookingForPartner: false,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+  validBatch.set(doc(validDb, "usernames/pace.user"), {
+    userId: "valid-profile",
+    usernameNormalized: "pace.user",
+    createdAt: serverTimestamp(),
+  });
+  await assertSucceeds(validBatch.commit());
+});
+
 test("a former member loses reminder access after membership is revoked", async () => {
   await testEnvironment.withSecurityRulesDisabled(async (context) => {
     await setDoc(doc(context.firestore(), "sharedGoals/goal-1/reminders/old"), {
