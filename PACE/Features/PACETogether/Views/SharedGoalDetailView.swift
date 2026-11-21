@@ -45,33 +45,37 @@ struct SharedGoalDetailView: View {
         return goalLogs.contains { $0.authorId == currentUserId && $0.dateString == today }
     }
 
+    private var goalHeader: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(isOwner ? "SHARED GOAL · OWNER" : "SHARED GOAL · MEMBER")
+                    .font(PACETextStyle.pixelMetadata)
+                    .foregroundColor(PACETheme.accent)
+                Spacer()
+                Image(systemName: "person.2.fill")
+                    .foregroundColor(PACETheme.accent)
+            }
+            Text(goal.title.uppercased())
+                .font(PACETextStyle.displayLarge)
+                .foregroundColor(PACETheme.primaryText)
+                .fixedSize(horizontal: false, vertical: true)
+            let targetDateText = goal.targetDateForDisplay
+                .formatted(date: .complete, time: .omitted)
+                .uppercased()
+            let countdownText = "\(goal.countdownDays) DAYS REMAINING"
+            Text("TARGET \(targetDateText) · \(countdownText)")
+                .font(PACETextStyle.pixelMetadata)
+                .foregroundColor(PACETheme.secondaryText)
+            Text(goal.asPACEGoal().scheduleDescription)
+                .font(PACETextStyle.pixelMetadata)
+                .foregroundColor(PACETheme.mutedText)
+        }
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text(isOwner ? "SHARED GOAL · OWNER" : "SHARED GOAL · MEMBER")
-                            .font(PACETextStyle.pixelMetadata)
-                            .foregroundColor(PACETheme.accent)
-                        Spacer()
-                        Image(systemName: "person.2.fill")
-                            .foregroundColor(PACETheme.accent)
-                    }
-                    Text(goal.title.uppercased())
-                        .font(PACETextStyle.displayLarge)
-                        .foregroundColor(PACETheme.primaryText)
-                        .fixedSize(horizontal: false, vertical: true)
-                    let targetDateText = goal.targetDateForDisplay
-                        .formatted(date: .complete, time: .omitted)
-                        .uppercased()
-                    let countdownText = "\(goal.countdownDays) DAYS REMAINING"
-                    Text("TARGET \(targetDateText) · \(countdownText)")
-                        .font(PACETextStyle.pixelMetadata)
-                        .foregroundColor(PACETheme.secondaryText)
-                    Text(goal.scheduleDescription)
-                        .font(PACETextStyle.pixelMetadata)
-                        .foregroundColor(PACETheme.mutedText)
-                }
+                goalHeader
 
                 if !goal.description.isEmpty {
                     Text(goal.description)
